@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import Navbar from "@/components/Navbar";
 import CategoryStrip from "@/components/scholarships/CategoryStrip";
-import ScholarshipPillSearch from "@/components/scholarships/ScholarshipPillSearch";
 import ScholarshipCard from "@/components/scholarships/ScholarshipCard";
 import ScholarshipDetailDrawer from "@/components/scholarships/ScholarshipDetailDrawer";
 import { ScholarshipSkeletonGrid } from "@/components/scholarships/ScholarshipSkeleton";
@@ -14,6 +14,7 @@ import type { Tables } from "@/integrations/supabase/types";
 
 const Scholarships = () => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [scholarships, setScholarships] = useState<Tables<"scholarships">[]>([]);
   const [loading, setLoading] = useState(true);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
@@ -21,10 +22,9 @@ const Scholarships = () => {
   const [selected, setSelected] = useState<Tables<"scholarships"> | null>(null);
   const [activeCategory, setActiveCategory] = useState("All");
 
-  // Pill search state
-  const [searchCountry, setSearchCountry] = useState("");
-  const [searchDegree, setSearchDegree] = useState("");
-  const [searchField, setSearchField] = useState("");
+  const searchCountry = searchParams.get("country") || "";
+  const searchDegree = searchParams.get("degree") || "";
+  const searchField = searchParams.get("field") || "";
 
   // Onboarding
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -97,23 +97,10 @@ const Scholarships = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      {/* Pill search */}
-      <div className="pt-20 pb-4 bg-card border-b border-border">
-        <div className="container">
-          <ScholarshipPillSearch
-            country={searchCountry}
-            degree={searchDegree}
-            field={searchField}
-            onCountryChange={setSearchCountry}
-            onDegreeChange={setSearchDegree}
-            onFieldChange={setSearchField}
-            onSearch={() => {}}
-          />
-        </div>
-      </div>
-
       {/* Category strip */}
-      <CategoryStrip active={activeCategory} onChange={setActiveCategory} />
+      <div className="pt-16">
+        <CategoryStrip active={activeCategory} onChange={setActiveCategory} />
+      </div>
 
       {/* Main grid */}
       <div className="container py-8">
