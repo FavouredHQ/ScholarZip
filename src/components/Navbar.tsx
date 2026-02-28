@@ -36,58 +36,58 @@ const Navbar = ({
           <span className="hidden sm:inline">ScholarFlow</span>
         </Link>
 
-        {/* Pill search – only on /scholarships */}
+        {/* Centre: Pill search + Filter – only on /scholarships */}
         {isScholarships && onCountryChange && (
-          <div className="hidden md:flex items-center rounded-full border border-border bg-background shadow-search divide-x divide-border flex-1 max-w-lg mx-4">
-            <div className="flex items-center gap-2 px-4 py-2 flex-1 min-w-0">
-              <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <input
-                type="text"
-                placeholder="Target Country"
-                value={searchCountry}
-                onChange={(e) => onCountryChange(e.target.value)}
-                className="bg-transparent border-0 outline-none text-xs text-foreground placeholder:text-muted-foreground w-full"
-              />
+          <div className="hidden md:flex items-center gap-3 absolute left-1/2 -translate-x-1/2">
+            <div className="flex items-center rounded-full border border-border bg-background shadow-search divide-x divide-border">
+              <div className="flex items-center gap-2 px-4 py-2 min-w-0">
+                <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Target Country"
+                  value={searchCountry}
+                  onChange={(e) => onCountryChange(e.target.value)}
+                  className="bg-transparent border-0 outline-none text-xs text-foreground placeholder:text-muted-foreground w-28"
+                />
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 min-w-0">
+                <DegreeIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Degree Level"
+                  value={searchDegree}
+                  onChange={(e) => onDegreeChange?.(e.target.value)}
+                  className="bg-transparent border-0 outline-none text-xs text-foreground placeholder:text-muted-foreground w-24"
+                />
+              </div>
+              <div className="flex items-center gap-2 pl-4 pr-1.5 py-1.5 min-w-0">
+                <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Field of Study"
+                  value={searchField}
+                  onChange={(e) => onFieldChange?.(e.target.value)}
+                  className="bg-transparent border-0 outline-none text-xs text-foreground placeholder:text-muted-foreground w-24"
+                />
+                <button className="flex items-center justify-center h-7 w-7 rounded-full gradient-gold text-accent-foreground shrink-0 hover:opacity-90 transition-opacity">
+                  <Search className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 flex-1 min-w-0">
-              <DegreeIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <input
-                type="text"
-                placeholder="Degree Level"
-                value={searchDegree}
-                onChange={(e) => onDegreeChange?.(e.target.value)}
-                className="bg-transparent border-0 outline-none text-xs text-foreground placeholder:text-muted-foreground w-full"
-              />
-            </div>
-            <div className="flex items-center gap-2 pl-4 pr-1.5 py-1.5 flex-1 min-w-0">
-              <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <input
-                type="text"
-                placeholder="Field of Study"
-                value={searchField}
-                onChange={(e) => onFieldChange?.(e.target.value)}
-                className="bg-transparent border-0 outline-none text-xs text-foreground placeholder:text-muted-foreground w-full flex-1"
-              />
-              <button className="flex items-center justify-center h-7 w-7 rounded-full gradient-gold text-accent-foreground shrink-0 hover:opacity-90 transition-opacity">
-                <Search className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Filter button + nav links */}
-        <div className="flex items-center gap-1 shrink-0">
-          {isScholarships && (
             <Button
               variant="outline"
               size="sm"
-              className="rounded-full text-xs font-medium gap-1.5 border-border"
+              className="rounded-full text-xs font-medium gap-1.5 border-border shrink-0"
               onClick={() => {/* Filter functionality can be added */}}
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
               Filter
             </Button>
-          )}
+          </div>
+        )}
+
+        {/* Nav links */}
+        <div className="flex items-center gap-1 shrink-0">
           <Button variant="ghost" size="sm" className="text-sm font-medium" onClick={() => navigate('/scholarships')}>
             Discover
           </Button>
