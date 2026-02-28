@@ -72,8 +72,8 @@ const Auth = () => {
       <div className="flex items-center justify-center pt-24 pb-12 px-4">
         <Card className="w-full max-w-md shadow-card animate-fade-in">
           <CardHeader className="text-center">
-            <CardTitle className="font-display text-2xl">Welcome to ScholarMatch</CardTitle>
-            <CardDescription>Find your perfect scholarship match with AI</CardDescription>
+            <CardTitle className="font-display text-2xl">Welcome to ScholarFlow</CardTitle>
+            <CardDescription>The world's scholarships, matched to you</CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs value={tab} onValueChange={setTab}>
