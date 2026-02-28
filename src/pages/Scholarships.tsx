@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import Navbar from "@/components/Navbar";
@@ -8,23 +7,21 @@ import ScholarshipCard from "@/components/scholarships/ScholarshipCard";
 import ScholarshipDetailDrawer from "@/components/scholarships/ScholarshipDetailDrawer";
 import { ScholarshipSkeletonGrid } from "@/components/scholarships/ScholarshipSkeleton";
 import OnboardingModal from "@/components/onboarding/OnboardingModal";
-import { Radar } from "lucide-react";
+import { Radar, MapPin, GraduationCap, BookOpen, Search } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 
 const Scholarships = () => {
   const { user } = useAuth();
-  const [searchParams] = useSearchParams();
   const [scholarships, setScholarships] = useState<Tables<"scholarships">[]>([]);
   const [loading, setLoading] = useState(true);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Tables<"scholarships"> | null>(null);
   const [activeCategory, setActiveCategory] = useState("All");
-
-  const searchCountry = searchParams.get("country") || "";
-  const searchDegree = searchParams.get("degree") || "";
-  const searchField = searchParams.get("field") || "";
+  const [searchCountry, setSearchCountry] = useState("");
+  const [searchDegree, setSearchDegree] = useState("");
+  const [searchField, setSearchField] = useState("");
 
   // Onboarding
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -97,10 +94,47 @@ const Scholarships = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      {/* Category strip */}
-      <div className="pt-16">
-        <CategoryStrip active={activeCategory} onChange={setActiveCategory} />
+      {/* Pill search bar */}
+      <div className="pt-20 pb-4 bg-card flex justify-center">
+        <div className="flex items-center rounded-full border border-border bg-background shadow-search divide-x divide-border w-full max-w-2xl mx-4">
+          <div className="flex items-center gap-2.5 px-5 py-3 flex-1 min-w-0">
+            <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+            <input
+              type="text"
+              placeholder="Target Country"
+              value={searchCountry}
+              onChange={(e) => setSearchCountry(e.target.value)}
+              className="bg-transparent border-0 outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
+            />
+          </div>
+          <div className="flex items-center gap-2.5 px-5 py-3 flex-1 min-w-0">
+            <GraduationCap className="h-4 w-4 text-muted-foreground shrink-0" />
+            <input
+              type="text"
+              placeholder="Degree Level"
+              value={searchDegree}
+              onChange={(e) => setSearchDegree(e.target.value)}
+              className="bg-transparent border-0 outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
+            />
+          </div>
+          <div className="flex items-center gap-2.5 pl-5 pr-2 py-2 flex-1 min-w-0">
+            <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+            <input
+              type="text"
+              placeholder="Field of Study"
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value)}
+              className="bg-transparent border-0 outline-none text-sm text-foreground placeholder:text-muted-foreground w-full flex-1"
+            />
+            <button className="flex items-center justify-center h-9 w-9 rounded-full gradient-gold text-accent-foreground shrink-0 hover:opacity-90 transition-opacity">
+              <Search className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Category strip */}
+      <CategoryStrip active={activeCategory} onChange={setActiveCategory} />
 
       {/* Main grid */}
       <div className="container py-8">
