@@ -37,7 +37,7 @@ const CategoryStrip = ({ active, onChange }: Props) => {
         </button>
         <div
           ref={scrollRef}
-          className="flex gap-8 overflow-x-auto no-scrollbar py-3 px-8 md:px-12"
+          className="flex gap-8 overflow-x-auto no-scrollbar py-3 px-8 md:px-12 justify-center"
         >
           {CATEGORIES.map((cat) => {
             const isActive = active === cat.label;
