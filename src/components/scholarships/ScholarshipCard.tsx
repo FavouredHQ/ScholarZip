@@ -100,26 +100,24 @@ const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onC
             <Bookmark className="h-5 w-5 text-card drop-shadow-md" />
           )}
         </button>
+
+        {/* Provider type badge – bottom left */}
+        <Badge variant="secondary" className="absolute bottom-3 left-3 text-[10px] rounded-full px-2.5 py-0.5 shrink-0 bg-card/90 backdrop-blur-sm text-foreground shadow-sm">
+          {providerType}
+        </Badge>
+
+        {/* Rating – bottom right */}
+        <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full px-2.5 py-1 bg-card/90 backdrop-blur-sm shadow-sm">
+          <Star className="h-3.5 w-3.5 fill-foreground text-foreground" />
+          <span className="text-xs font-medium text-foreground">{rating}</span>
+        </div>
       </div>
 
       {/* Card text */}
       <div className="space-y-0.5">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-[15px] text-foreground leading-snug line-clamp-1">
-            {s.title}
-          </h3>
-          <div className="flex items-center gap-1 shrink-0 pt-0.5">
-            <Star className="h-3.5 w-3.5 fill-foreground text-foreground" />
-            <span className="text-sm text-foreground">{rating}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-muted-foreground line-clamp-1">{providerName}</p>
-          <Badge variant="secondary" className="text-[10px] rounded-full px-2 py-0 shrink-0">
-            {providerType}
-          </Badge>
-        </div>
+        <h3 className="font-semibold text-[15px] text-foreground leading-snug line-clamp-1">
+          {s.title}
+        </h3>
 
         {desc && (
           <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{desc}</p>
