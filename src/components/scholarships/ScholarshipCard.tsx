@@ -1,4 +1,4 @@
-import { Clock, Bookmark, BookmarkCheck } from "lucide-react";
+import { Clock, Bookmark, BookmarkCheck, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -11,11 +11,6 @@ const PLACEHOLDER_IMAGES = [
   "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=600&h=400&fit=crop",
 ];
 
-const daysLeft = (deadline: string | null) => {
-  if (!deadline) return null;
-  return Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000);
-};
-
 const fmtCurrency = (amount: number | null, currency: string | null) => {
   if (!amount) return null;
   return new Intl.NumberFormat("en-US", {
@@ -25,18 +20,34 @@ const fmtCurrency = (amount: number | null, currency: string | null) => {
   }).format(amount);
 };
 
-/* Deterministic provider type from scholarship id */
+const fmtDeadline = (deadline: string | null) => {
+  if (!deadline) return null;
+  return new Date(deadline).toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+};
+
+/* Deterministic rating from id */
+const getRating = (id: string) => {
+  const hash = id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  return (4.5 + (hash % 50) / 100).toFixed(2);
+};
+
+const isTopChoice = (id: string) => {
+  const hash = id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  return hash % 3 === 0;
+};
+
+/* Deterministic provider type */
 const getProviderType = (id: string) => {
   const hash = id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
   const types = ["University", "Government", "Foundation", "Corporate"];
   return types[hash % types.length];
 };
 
-const providerColors: Record<string, string> = {
-  University: "bg-blue-100 text-blue-700",
-  Government: "bg-emerald-100 text-emerald-700",
-  Foundation: "bg-purple-100 text-purple-700",
-  Corporate: "bg-amber-100 text-amber-700",
+/* Deterministic provider name from description or fallback */
+const getProviderName = (s: Tables<"scholarships">) => {
+  const first = s.description?.split(".")[0];
+  if (first && first.length < 60) return first;
+  return "Scholarship Provider";
 };
 
 interface Props {
@@ -50,68 +61,78 @@ interface Props {
 
 const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onClick }: Props) => {
   const img = PLACEHOLDER_IMAGES[index % PLACEHOLDER_IMAGES.length];
+  const rating = getRating(s.id);
+  const topChoice = isTopChoice(s.id);
   const providerType = getProviderType(s.id);
-  const days = daysLeft(s.deadline);
-  const providerName = s.description?.split(".")[0] || "Scholarship Provider";
+  const providerName = getProviderName(s);
+  const desc = s.description ? s.description.slice(0, 120) + (s.description.length > 120 ? "..." : "") : "";
 
   return (
-    <div
-      className="group cursor-pointer rounded-[1.5rem] bg-card border border-border overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-300"
-      onClick={onClick}
-    >
-      {/* Image with provider overlay */}
-      <div className="relative aspect-[4/3] overflow-hidden">
+    <div className="group cursor-pointer" onClick={onClick}>
+      {/* Image */}
+      <div className="relative aspect-[4/3] rounded-xl overflow-hidden mb-3">
         <img
           src={img}
           alt={s.title}
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
         />
-        {/* Provider name overlay */}
-        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-foreground/60 to-transparent p-4 pt-10">
-          <span className="text-sm font-medium text-card">{providerName}</span>
-        </div>
+
+        {/* Top Choice badge */}
+        {topChoice && (
+          <div className="absolute top-3 left-3 rounded-full px-3 py-1 text-xs font-semibold bg-card text-foreground shadow-sm">
+            Top Choice
+          </div>
+        )}
 
         {/* Save button */}
         <button
           onClick={(e) => onSave(s.id, e)}
           disabled={isSaving}
-          className="absolute top-3 right-3 h-9 w-9 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-card hover:scale-110"
+          className="absolute top-3 right-3 h-8 w-8 rounded-full flex items-center justify-center transition-transform hover:scale-110"
         >
           {isSaved ? (
-            <BookmarkCheck className="h-4 w-4 text-accent" />
+            <BookmarkCheck className="h-5 w-5 text-accent drop-shadow-md" />
           ) : (
-            <Bookmark className="h-4 w-4 text-foreground" />
+            <Bookmark className="h-5 w-5 text-card drop-shadow-md" />
           )}
         </button>
       </div>
 
-      {/* Card body */}
-      <div className="p-4 space-y-2">
+      {/* Card text */}
+      <div className="space-y-0.5">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-[15px] text-foreground leading-snug line-clamp-2">
+          <h3 className="font-semibold text-[15px] text-foreground leading-snug line-clamp-1">
             {s.title}
           </h3>
-          <Badge
-            variant="secondary"
-            className={`text-[10px] font-semibold shrink-0 rounded-full px-2 ${providerColors[providerType] || ""}`}
-          >
+          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+            <Star className="h-3.5 w-3.5 fill-foreground text-foreground" />
+            <span className="text-sm text-foreground">{rating}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-muted-foreground line-clamp-1">{providerName}</p>
+          <Badge variant="secondary" className="text-[10px] rounded-full px-2 py-0 shrink-0">
             {providerType}
           </Badge>
         </div>
 
-        {s.amount && (
-          <p className="text-lg font-bold text-foreground">
-            {fmtCurrency(s.amount, s.currency)}
-            <span className="text-xs font-normal text-muted-foreground ml-1">/ Year</span>
+        {desc && (
+          <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{desc}</p>
+        )}
+
+        {s.deadline && (
+          <p className="text-sm text-muted-foreground">
+            Deadline: {fmtDeadline(s.deadline)}
           </p>
         )}
 
-        {s.deadline && days !== null && days > 0 && (
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Clock className="h-3.5 w-3.5" />
-            <span>Ends in {days} days</span>
-          </div>
+        {s.amount && (
+          <p className="text-sm pt-0.5">
+            <span className="font-semibold text-foreground">{fmtCurrency(s.amount, s.currency)}</span>
+            <span className="text-muted-foreground ml-1">total value</span>
+          </p>
         )}
       </div>
     </div>
