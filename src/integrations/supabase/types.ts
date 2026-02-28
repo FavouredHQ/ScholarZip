@@ -59,6 +59,44 @@ export type Database = {
           },
         ]
       }
+      education_history: {
+        Row: {
+          course: string | null
+          created_at: string
+          degree_type: string
+          grade: string | null
+          id: string
+          institution: string
+          user_id: string
+        }
+        Insert: {
+          course?: string | null
+          created_at?: string
+          degree_type: string
+          grade?: string | null
+          id?: string
+          institution: string
+          user_id: string
+        }
+        Update: {
+          course?: string | null
+          created_at?: string
+          degree_type?: string
+          grade?: string | null
+          id?: string
+          institution?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "education_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       matches: {
         Row: {
           ai_reasoning: string | null
@@ -113,7 +151,9 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          onboarding_completed: boolean | null
           target_countries: string[] | null
+          target_courses: string[] | null
         }
         Insert: {
           bio?: string | null
@@ -123,7 +163,9 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          onboarding_completed?: boolean | null
           target_countries?: string[] | null
+          target_courses?: string[] | null
         }
         Update: {
           bio?: string | null
@@ -133,7 +175,9 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          onboarding_completed?: boolean | null
           target_countries?: string[] | null
+          target_courses?: string[] | null
         }
         Relationships: []
       }
