@@ -43,11 +43,11 @@ const Auth = () => {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: fullName },
+        data: { full_name: fullName, role: selectedRole },
         emailRedirectTo: window.location.origin,
       },
     });
@@ -55,11 +55,6 @@ const Auth = () => {
       toast.error(error.message);
       setSubmitting(false);
       return;
-    }
-
-    if (data.user) {
-      // Insert user role
-      await supabase.from("user_roles").insert({ user_id: data.user.id, role: selectedRole });
     }
 
     setSubmitting(false);
