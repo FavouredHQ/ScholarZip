@@ -8,7 +8,7 @@ const Navbar = () => {
   const navigate = useNavigate();
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-card">
       <div className="container flex h-16 items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 font-semibold text-lg text-foreground">
@@ -31,7 +31,7 @@ const Navbar = () => {
               <Button variant="ghost" size="sm" className="text-sm font-medium" onClick={() => navigate('/profile')}>
                 Profile
               </Button>
-              <Button variant="outline" size="sm" className="ml-1 text-sm" onClick={signOut}>
+              <Button variant="outline" size="sm" className="ml-1 text-sm rounded-full" onClick={signOut}>
                 Sign Out
               </Button>
             </>
@@ -42,7 +42,7 @@ const Navbar = () => {
               </Button>
               <Button
                 size="sm"
-                className="ml-1 gradient-gold text-accent-foreground font-semibold shadow-gold hover:opacity-90 transition-opacity"
+                className="ml-1 gradient-gold text-accent-foreground font-semibold shadow-gold hover:opacity-90 transition-opacity rounded-full"
                 onClick={() => navigate('/auth?tab=signup')}
               >
                 Get Started
