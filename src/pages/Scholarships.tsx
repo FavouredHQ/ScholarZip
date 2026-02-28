@@ -2,19 +2,15 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import Navbar from "@/components/Navbar";
-import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import {
-  DollarSign,
-  Calendar,
   Search,
   GraduationCap,
   Bookmark,
   BookmarkCheck,
-  Clock,
   ExternalLink,
   Radar,
   Rocket,
@@ -23,10 +19,16 @@ import {
   BookOpen,
   Heart,
   Globe,
-  MapPin,
-  User,
+  Star,
+  Calendar,
   ChevronLeft,
   ChevronRight,
+  Trophy,
+  Handshake,
+  Music,
+  Code,
+  Microscope,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
@@ -34,31 +36,58 @@ import type { Tables } from "@/integrations/supabase/types";
 /* ───── constants ───── */
 const CATEGORIES = [
   { label: "All", icon: Rocket },
-  { label: "Full-Ride", icon: GraduationCap },
   { label: "STEM", icon: FlaskConical },
+  { label: "Full-Ride", icon: GraduationCap },
+  { label: "Merit", icon: Trophy },
+  { label: "Need-based", icon: Handshake },
+  { label: "Women in Tech", icon: Heart },
+  { label: "International", icon: Globe },
+  { label: "Research", icon: Microscope },
   { label: "MBA", icon: Briefcase },
   { label: "Humanities", icon: BookOpen },
-  { label: "Women in Tech", icon: Heart },
-  { label: "Developing Nations", icon: Globe },
+  { label: "Technology", icon: Code },
+  { label: "Music", icon: Music },
+  { label: "Graduate", icon: Users },
 ];
 
-const CARD_GRADIENTS = [
-  "from-navy to-navy-light",
-  "from-navy-dark to-navy",
-  "from-gold-dark/80 to-gold/60",
-  "from-navy-light to-primary",
-  "from-navy to-navy-dark",
+const PLACEHOLDER_IMAGES = [
+  "https://images.unsplash.com/photo-1562774053-701939374585?w=600&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1523050854058-8df90110c476?w=600&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=600&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?w=600&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=600&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=600&h=400&fit=crop",
 ];
 
 /* ───── helpers ───── */
 const daysLeft = (deadline: string | null) => {
   if (!deadline) return null;
-  return Math.ceil((new Date(deadline).getTime() - Date.now()) / (86400000));
+  return Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000);
 };
 
 const fmtCurrency = (amount: number | null, currency: string | null) => {
   if (!amount) return null;
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD", maximumFractionDigits: 0 }).format(amount);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency || "USD",
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
+const fmtDeadline = (deadline: string | null) => {
+  if (!deadline) return null;
+  return new Date(deadline).toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+};
+
+// Deterministic "rating" from scholarship id
+const getRating = (id: string) => {
+  const hash = id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  return (4.5 + (hash % 50) / 100).toFixed(2);
+};
+
+const isTopChoice = (id: string) => {
+  const hash = id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  return hash % 3 === 0;
 };
 
 /* ───── component ───── */
@@ -130,51 +159,13 @@ const Scholarships = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      {/* ── Pill Search Bar ── */}
-      <div className="pt-20 pb-4 border-b border-border bg-background sticky top-16 z-40">
-        <div className="container">
-          <div className="max-w-2xl mx-auto">
-            <div className="flex items-center rounded-full border border-border bg-card shadow-search overflow-hidden">
-              <button className="flex-1 flex items-center gap-2 px-5 py-3 text-left border-r border-border hover:bg-muted/50 transition-colors">
-                <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div>
-                  <p className="text-[11px] font-semibold text-foreground leading-none">Where</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Target country</p>
-                </div>
-              </button>
-              <button className="flex-1 flex items-center gap-2 px-5 py-3 text-left border-r border-border hover:bg-muted/50 transition-colors">
-                <User className="h-4 w-4 text-muted-foreground shrink-0" />
-                <div>
-                  <p className="text-[11px] font-semibold text-foreground leading-none">Who</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Education level</p>
-                </div>
-              </button>
-              <div className="flex-1 flex items-center gap-2 px-4 py-2">
-                <div className="flex-1">
-                  <p className="text-[11px] font-semibold text-foreground leading-none mb-0.5">What</p>
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Field of study..."
-                    className="h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-xs placeholder:text-muted-foreground bg-transparent"
-                  />
-                </div>
-                <div className="flex h-8 w-8 items-center justify-center rounded-full gradient-gold shrink-0">
-                  <Search className="h-4 w-4 text-accent-foreground" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* ── Category Strip ── */}
-      <div className="border-b border-border bg-background sticky top-[8.5rem] z-30">
+      <div className="border-b border-border bg-background sticky top-16 z-30 pt-4">
         <div className="container relative">
-          <button onClick={() => scroll(-1)} className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full border border-border bg-card shadow-sm flex items-center justify-center hover:shadow-card-hover transition-shadow hidden md:flex">
+          <button onClick={() => scroll(-1)} className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full border border-border bg-card shadow-sm items-center justify-center hover:shadow-card-hover transition-shadow hidden md:flex">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <div ref={scrollRef} className="flex gap-6 overflow-x-auto no-scrollbar py-4 px-8 md:px-12">
+          <div ref={scrollRef} className="flex gap-8 overflow-x-auto no-scrollbar py-3 px-8 md:px-12">
             {CATEGORIES.map((cat) => {
               const active = activeCategory === cat.label;
               return (
@@ -186,167 +177,195 @@ const Scholarships = () => {
                   }`}
                 >
                   <cat.icon className="h-5 w-5" />
-                  <span className="text-xs font-medium whitespace-nowrap">{cat.label}</span>
+                  <span className="text-[11px] font-medium whitespace-nowrap">{cat.label}</span>
                 </button>
               );
             })}
           </div>
-          <button onClick={() => scroll(1)} className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full border border-border bg-card shadow-sm flex items-center justify-center hover:shadow-card-hover transition-shadow hidden md:flex">
+          <button onClick={() => scroll(1)} className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 rounded-full border border-border bg-card shadow-sm items-center justify-center hover:shadow-card-hover transition-shadow hidden md:flex">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
       </div>
 
+      {/* ── Search bar (inline) ── */}
+      <div className="container pt-5 pb-2">
+        <div className="max-w-md">
+          <div className="flex items-center gap-2 rounded-full border border-border bg-card shadow-search px-4 py-2">
+            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search scholarships..."
+              className="h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-sm placeholder:text-muted-foreground bg-transparent"
+            />
+          </div>
+        </div>
+      </div>
+
       {/* ── Main Grid ── */}
-      <div className="container py-8">
+      <div className="container py-6">
         {loading ? (
           <div className="text-center py-20 text-muted-foreground animate-pulse">Loading scholarships...</div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <Radar className="h-16 w-16 text-accent/40 mb-6 animate-pulse" />
-            <h3 className="text-xl font-semibold text-foreground mb-2">Our AI Scouts are currently indexing new grants.</h3>
-            <p className="text-muted-foreground">Check back in 5 minutes!</p>
+            <h3 className="text-xl font-semibold text-foreground mb-2">No scholarships found.</h3>
+            <p className="text-muted-foreground">Try adjusting your search or filters.</p>
           </div>
         ) : (
-          <>
-            <p className="text-sm text-muted-foreground mb-5">{filtered.length} scholarship{filtered.length !== 1 ? "s" : ""}</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in">
-              {filtered.map((s, i) => {
-                const days = daysLeft(s.deadline);
-                const isSaved = savedIds.has(s.id);
-                const gradient = CARD_GRADIENTS[i % CARD_GRADIENTS.length];
-                return (
-                  <div
-                    key={s.id}
-                    className="group cursor-pointer"
-                    onClick={() => setSelected(s)}
-                  >
-                    {/* Card image / gradient area */}
-                    <div className={`relative aspect-[4/3] rounded-2xl overflow-hidden bg-gradient-to-br ${gradient} mb-3`}>
-                      {/* Deadline badge */}
-                      {days !== null && (
-                        <div className={`absolute top-3 right-3 rounded-full px-2.5 py-1 text-[11px] font-semibold backdrop-blur-md ${
-                          days <= 7 ? "bg-destructive/90 text-destructive-foreground" : "bg-background/80 text-foreground"
-                        }`}>
-                          {days <= 0 ? "Expired" : `${days}d left`}
-                        </div>
-                      )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-10 animate-fade-in">
+            {filtered.map((s, i) => {
+              const isSaved = savedIds.has(s.id);
+              const img = PLACEHOLDER_IMAGES[i % PLACEHOLDER_IMAGES.length];
+              const rating = getRating(s.id);
+              const topChoice = isTopChoice(s.id);
 
-                      {/* Save button */}
-                      <button
-                        onClick={(e) => handleSave(s.id, e)}
-                        disabled={savingId === s.id}
-                        className="absolute top-3 left-3 h-8 w-8 rounded-full bg-background/70 backdrop-blur-md flex items-center justify-center hover:bg-background/90 transition-colors"
-                      >
-                        {isSaved ? (
-                          <BookmarkCheck className="h-4 w-4 text-accent" />
-                        ) : (
-                          <Bookmark className="h-4 w-4 text-foreground" />
-                        )}
-                      </button>
+              return (
+                <div key={s.id} className="group cursor-pointer" onClick={() => setSelected(s)}>
+                  {/* Image */}
+                  <div className="relative aspect-[4/3] rounded-xl overflow-hidden mb-3">
+                    <img
+                      src={img}
+                      alt={s.title}
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      loading="lazy"
+                    />
 
-                      {/* Centered icon */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <GraduationCap className="h-16 w-16 text-primary-foreground/20" />
+                    {/* Top Choice badge */}
+                    {topChoice && (
+                      <div className="absolute top-3 left-3 rounded-full px-3 py-1 text-xs font-semibold bg-card text-foreground shadow-sm">
+                        Top Choice
                       </div>
+                    )}
 
-                      {/* Amount overlay */}
-                      {s.amount && (
-                        <div className="absolute bottom-3 left-3 rounded-lg px-2.5 py-1 bg-background/80 backdrop-blur-md">
-                          <span className="text-sm font-bold text-foreground">{fmtCurrency(s.amount, s.currency)}</span>
-                          <span className="text-[11px] text-muted-foreground ml-1">total</span>
-                        </div>
+                    {/* Save button */}
+                    <button
+                      onClick={(e) => handleSave(s.id, e)}
+                      disabled={savingId === s.id}
+                      className="absolute top-3 right-3 h-8 w-8 rounded-full flex items-center justify-center transition-colors hover:scale-110"
+                    >
+                      {isSaved ? (
+                        <BookmarkCheck className="h-5 w-5 text-accent drop-shadow-md" />
+                      ) : (
+                        <Bookmark className="h-5 w-5 text-card drop-shadow-md" />
                       )}
-                    </div>
+                    </button>
+                  </div>
 
-                    {/* Card text */}
-                    <div className="px-0.5">
-                      <h3 className="font-semibold text-[15px] text-foreground leading-snug line-clamp-2 group-hover:text-accent transition-colors">
+                  {/* Card text */}
+                  <div className="space-y-0.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold text-[15px] text-foreground leading-snug line-clamp-1">
                         {s.title}
                       </h3>
-                      <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">{s.description}</p>
-                      {s.tags && s.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {s.tags.slice(0, 3).map((tag) => (
-                            <span key={tag} className="text-[11px] text-muted-foreground bg-secondary rounded-full px-2 py-0.5">{tag}</span>
-                          ))}
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                        <Star className="h-3.5 w-3.5 fill-foreground text-foreground" />
+                        <span className="text-sm text-foreground">{rating}</span>
+                      </div>
                     </div>
+
+                    <p className="text-sm text-muted-foreground line-clamp-1">
+                      {s.description?.split(".")[0] || "Scholarship Provider"}
+                    </p>
+
+                    {s.deadline && (
+                      <p className="text-sm text-muted-foreground">
+                        Deadline: {fmtDeadline(s.deadline)}
+                      </p>
+                    )}
+
+                    {s.amount && (
+                      <p className="text-sm pt-1">
+                        <span className="font-semibold text-foreground">{fmtCurrency(s.amount, s.currency)}</span>
+                        <span className="text-muted-foreground ml-1">total value</span>
+                      </p>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          </>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
-      {/* ── Detail Drawer (Side Sheet) ── */}
+      {/* ── Detail Drawer ── */}
       <Sheet open={!!selected} onOpenChange={() => setSelected(null)}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0">
-          {selected && (
-            <div>
-              {/* Header gradient */}
-              <div className={`aspect-[2/1] bg-gradient-to-br ${CARD_GRADIENTS[0]} relative flex items-center justify-center`}>
-                <GraduationCap className="h-20 w-20 text-primary-foreground/20" />
-                {selected.amount && (
-                  <div className="absolute bottom-4 left-4 rounded-xl px-3 py-1.5 bg-background/80 backdrop-blur-md">
-                    <span className="text-lg font-bold text-foreground">{fmtCurrency(selected.amount, selected.currency)}</span>
-                    <span className="text-sm text-muted-foreground ml-1">total</span>
+          {selected && (() => {
+            const idx = scholarships.indexOf(selected);
+            const img = PLACEHOLDER_IMAGES[(idx >= 0 ? idx : 0) % PLACEHOLDER_IMAGES.length];
+            const rating = getRating(selected.id);
+            return (
+              <div>
+                {/* Header image */}
+                <div className="relative aspect-[2/1] overflow-hidden">
+                  <img src={img} alt={selected.title} className="w-full h-full object-cover" />
+                  {selected.amount && (
+                    <div className="absolute bottom-4 left-4 rounded-xl px-3 py-1.5 bg-card/80 backdrop-blur-md">
+                      <span className="text-lg font-bold text-foreground">{fmtCurrency(selected.amount, selected.currency)}</span>
+                      <span className="text-sm text-muted-foreground ml-1">total value</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-6 space-y-5">
+                  <SheetHeader className="text-left p-0 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <SheetTitle className="text-xl font-bold">{selected.title}</SheetTitle>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Star className="h-4 w-4 fill-foreground text-foreground" />
+                        <span className="text-sm font-medium">{rating}</span>
+                      </div>
+                    </div>
+                    <SheetDescription className="text-sm text-muted-foreground">Scholarship details</SheetDescription>
+                  </SheetHeader>
+
+                  {selected.deadline && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                      Deadline: {new Date(selected.deadline).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+                      {(() => { const d = daysLeft(selected.deadline); return d !== null && d > 0 ? <Badge variant="secondary" className="ml-1 text-xs">{d}d left</Badge> : null; })()}
+                    </div>
+                  )}
+
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                    {selected.description || "No description provided."}
+                  </p>
+
+                  {selected.eligibility_criteria && (
+                    <div>
+                      <h4 className="font-semibold text-sm mb-2">Eligibility Criteria</h4>
+                      <pre className="text-xs bg-secondary rounded-xl p-4 overflow-x-auto text-muted-foreground">{JSON.stringify(selected.eligibility_criteria, null, 2)}</pre>
+                    </div>
+                  )}
+
+                  {selected.tags && selected.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selected.tags.map((tag) => (
+                        <Badge key={tag} variant="secondary" className="text-xs rounded-full">{tag}</Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  {selected.source_url && (
+                    <a href={selected.source_url} target="_blank" rel="noopener noreferrer" className="text-sm text-accent hover:underline flex items-center gap-1">
+                      <ExternalLink className="h-4 w-4" /> View Original Source
+                    </a>
+                  )}
+
+                  <div className="flex gap-3 pt-4 border-t border-border">
+                    <Button variant="outline" className="flex-1 rounded-xl gap-2" onClick={() => selected && handleSave(selected.id)}>
+                      {savedIds.has(selected.id) ? <><BookmarkCheck className="h-4 w-4" /> Saved</> : <><Bookmark className="h-4 w-4" /> Save</>}
+                    </Button>
+                    <Button className="flex-1 rounded-xl gradient-gold text-accent-foreground font-semibold shadow-gold hover:opacity-90 transition-opacity" onClick={() => handleApply(selected.id)}>
+                      Apply Now
+                    </Button>
                   </div>
-                )}
-              </div>
-
-              <div className="p-6 space-y-5">
-                <SheetHeader className="text-left p-0 space-y-1">
-                  <SheetTitle className="text-xl font-bold">{selected.title}</SheetTitle>
-                  <SheetDescription className="text-sm text-muted-foreground">Scholarship details</SheetDescription>
-                </SheetHeader>
-
-                {selected.deadline && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    Deadline: {new Date(selected.deadline).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
-                    {(() => { const d = daysLeft(selected.deadline); return d !== null && d > 0 ? <Badge variant="secondary" className="ml-1 text-xs">{d}d left</Badge> : null; })()}
-                  </div>
-                )}
-
-                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-                  {selected.description || "No description provided."}
-                </p>
-
-                {selected.eligibility_criteria && (
-                  <div>
-                    <h4 className="font-semibold text-sm mb-2">Eligibility Criteria</h4>
-                    <pre className="text-xs bg-secondary rounded-xl p-4 overflow-x-auto text-muted-foreground">{JSON.stringify(selected.eligibility_criteria, null, 2)}</pre>
-                  </div>
-                )}
-
-                {selected.tags && selected.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {selected.tags.map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-xs rounded-full">{tag}</Badge>
-                    ))}
-                  </div>
-                )}
-
-                {selected.source_url && (
-                  <a href={selected.source_url} target="_blank" rel="noopener noreferrer" className="text-sm text-accent hover:underline flex items-center gap-1">
-                    <ExternalLink className="h-4 w-4" /> View Original Source
-                  </a>
-                )}
-
-                <div className="flex gap-3 pt-4 border-t border-border">
-                  <Button variant="outline" className="flex-1 rounded-xl gap-2" onClick={() => selected && handleSave(selected.id)}>
-                    {savedIds.has(selected.id) ? <><BookmarkCheck className="h-4 w-4" /> Saved</> : <><Bookmark className="h-4 w-4" /> Save</>}
-                  </Button>
-                  <Button className="flex-1 rounded-xl gradient-gold text-accent-foreground font-semibold shadow-gold hover:opacity-90 transition-opacity" onClick={() => handleApply(selected.id)}>
-                    Apply Now
-                  </Button>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </SheetContent>
       </Sheet>
     </div>
