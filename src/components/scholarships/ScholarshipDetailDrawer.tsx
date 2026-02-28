@@ -70,12 +70,21 @@ const ScholarshipDetailDrawer = ({ scholarship, allScholarships, isSaved, onClos
               {scholarship.description || "No description provided."}
             </p>
 
-            {scholarship.eligibility_criteria && (
+            {scholarship.eligibility_criteria && typeof scholarship.eligibility_criteria === "object" && !Array.isArray(scholarship.eligibility_criteria) && (
               <div>
                 <h4 className="font-semibold text-sm mb-2">Eligibility Criteria</h4>
-                <pre className="text-xs bg-secondary rounded-[1.5rem] p-4 overflow-x-auto text-muted-foreground">
-                  {JSON.stringify(scholarship.eligibility_criteria, null, 2)}
-                </pre>
+                <div className="space-y-1.5">
+                  {Object.entries(scholarship.eligibility_criteria as Record<string, unknown>).map(([key, value]) => {
+                    const label = key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                    const display = Array.isArray(value) ? value.join(", ") : String(value);
+                    return (
+                      <div key={key} className="flex items-center justify-between text-sm bg-secondary rounded-lg px-4 py-2">
+                        <span className="text-muted-foreground">{label}</span>
+                        <span className="font-medium text-foreground">{display}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
