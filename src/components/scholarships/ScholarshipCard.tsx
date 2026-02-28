@@ -3,12 +3,12 @@ import { Badge } from "@/components/ui/badge";
 import type { Tables } from "@/integrations/supabase/types";
 
 const PLACEHOLDER_IMAGES = [
-  "https://images.unsplash.com/photo-1562774053-701939374585?w=600&h=400&fit=crop",
-  "https://images.unsplash.com/photo-1523050854058-8df90110c476?w=600&h=400&fit=crop",
-  "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=600&h=400&fit=crop",
-  "https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?w=600&h=400&fit=crop",
-  "https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=600&h=400&fit=crop",
-  "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=600&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1562774053-701939374585?w=600&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1523050854058-8df90110c476?w=600&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=600&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?w=600&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=600&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=600&h=400&fit=crop&auto=format",
 ];
 
 const fmtCurrency = (amount: number | null, currency: string | null) => {
@@ -76,6 +76,9 @@ const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onC
           alt={s.title}
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
+          onError={(e) => {
+            e.currentTarget.src = "/placeholder.svg";
+          }}
         />
 
         {/* Top Choice badge */}
