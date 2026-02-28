@@ -14,12 +14,15 @@ const Navbar = () => {
           <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-gold">
             <GraduationCap className="h-5 w-5 text-accent-foreground" />
           </div>
-          ScholarMatch
+          ScholarFlow
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {user ? (
             <>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/scholarships')}>
+                Discover
+              </Button>
               <Button variant="ghost" size="sm" onClick={() => navigate(role === 'provider' ? '/provider' : '/dashboard')}>
                 Dashboard
               </Button>
