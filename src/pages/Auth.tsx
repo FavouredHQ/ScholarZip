@@ -1,29 +1,95 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { lovable } from "@/integrations/lovable/index";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
+import { GraduationCap, Building2 } from "lucide-react";
 
 const Auth = () => {
-  const { user, role } = useAuth();
+  const { user, role, loading } = useAuth();
   const navigate = useNavigate();
+  const [selectingRole, setSelectingRole] = useState(false);
 
   useEffect(() => {
+    if (loading) return;
     if (user && role) {
       navigate(role === "provider" ? "/provider" : "/dashboard");
+    } else if (user && !role) {
+      setSelectingRole(true);
     }
-  }, [user, role, navigate]);
+  }, [user, role, loading, navigate]);
 
   const handleSocialLogin = async (provider: "google" | "apple") => {
     const { error } = await lovable.auth.signInWithOAuth(provider, {
-      redirect_uri: window.location.origin,
+      redirect_uri: window.location.origin + "/auth",
     });
     if (error) toast.error(error.message);
   };
 
+  const handleRoleSelect = async (selectedRole: "student" | "provider") => {
+    if (!user) return;
+    const { error } = await supabase
+      .from("user_roles")
+      .insert({ user_id: user.id, role: selectedRole });
+    if (error) {
+      toast.error("Failed to set role. Please try again.");
+      return;
+    }
+    toast.success(selectedRole === "student" ? "Welcome, student!" : "Welcome, provider!");
+    // Force role refresh by reloading
+    window.location.href = selectedRole === "provider" ? "/provider" : "/dashboard";
+  };
+
+  if (loading) return null;
+
+  // Step 3: Role selection
+  if (selectingRole && user) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex items-center justify-center pt-24 pb-12 px-4">
+          <Card className="w-full max-w-md shadow-card animate-fade-in">
+            <CardHeader className="text-center">
+              <CardTitle className="font-display text-2xl">How will you use ScholarFlow?</CardTitle>
+              <CardDescription>Choose your role to get started</CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => handleRoleSelect("student")}
+                className="flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-border bg-card hover:border-primary hover:bg-accent transition-all text-center group"
+              >
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                  <GraduationCap className="h-7 w-7 text-primary" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">Student</p>
+                  <p className="text-xs text-muted-foreground mt-1">Find & apply for scholarships</p>
+                </div>
+              </button>
+              <button
+                onClick={() => handleRoleSelect("provider")}
+                className="flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-border bg-card hover:border-primary hover:bg-accent transition-all text-center group"
+              >
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                  <Building2 className="h-7 w-7 text-primary" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">Scholarship Provider</p>
+                  <p className="text-xs text-muted-foreground mt-1">List & manage scholarships</p>
+                </div>
+              </button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Steps 1 & 2: Social login
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
