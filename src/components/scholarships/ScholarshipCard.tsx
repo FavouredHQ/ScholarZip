@@ -129,7 +129,7 @@ const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onC
           <p className="text-xs text-muted-foreground line-clamp-1">{providerName}</p>
         )}
 
-        {desc && !providerName && (
+        {desc && (
           <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{desc}</p>
         )}
 
