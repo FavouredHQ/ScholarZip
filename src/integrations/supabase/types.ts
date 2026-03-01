@@ -65,6 +65,7 @@ export type Database = {
           created_at: string
           degree_type: string
           grade: string | null
+          graduated_year: number | null
           id: string
           institution: string
           user_id: string
@@ -74,6 +75,7 @@ export type Database = {
           created_at?: string
           degree_type: string
           grade?: string | null
+          graduated_year?: number | null
           id?: string
           institution: string
           user_id: string
@@ -83,6 +85,7 @@ export type Database = {
           created_at?: string
           degree_type?: string
           grade?: string | null
+          graduated_year?: number | null
           id?: string
           institution?: string
           user_id?: string
@@ -221,6 +224,8 @@ export type Database = {
           id: string
           is_active: boolean | null
           provider_id: string | null
+          provider_name: string | null
+          provider_type: string | null
           source_url: string | null
           tags: string[] | null
           title: string
@@ -235,6 +240,8 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           provider_id?: string | null
+          provider_name?: string | null
+          provider_type?: string | null
           source_url?: string | null
           tags?: string[] | null
           title: string
@@ -249,6 +256,8 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           provider_id?: string | null
+          provider_name?: string | null
+          provider_type?: string | null
           source_url?: string | null
           tags?: string[] | null
           title?: string
