@@ -59,13 +59,35 @@ async function hashContent(text: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function normalizeUrl(url: string): string {
+type NormalizeResult = { valid: true; url: string } | { valid: false; reason: string };
+
+function normalizeUrl(raw: string): NormalizeResult {
+  let s = raw.trim();
+  if (!s) return { valid: false, reason: "empty_url" };
+
+  // Reject non-http schemes
+  const lc = s.toLowerCase();
+  if (lc.startsWith("mailto:") || lc.startsWith("tel:") || lc.startsWith("javascript:") || lc.startsWith("data:") || lc.startsWith("ftp:")) {
+    return { valid: false, reason: `rejected_scheme: ${lc.split(":")[0]}` };
+  }
+
+  // Protocol-relative
+  if (s.startsWith("//")) s = "https:" + s;
+  // Missing scheme but looks like a domain
+  else if (!s.startsWith("http://") && !s.startsWith("https://")) {
+    if (s.startsWith("www.") || s.includes(".")) {
+      s = "https://" + s;
+    } else {
+      return { valid: false, reason: "no_valid_scheme_or_domain" };
+    }
+  }
+
   try {
-    const u = new URL(url.trim());
+    const u = new URL(s);
     u.hash = "";
-    return u.href;
+    return { valid: true, url: u.href };
   } catch {
-    return url.trim();
+    return { valid: false, reason: `url_parse_failed: ${s.slice(0, 200)}` };
   }
 }
 
@@ -265,6 +287,7 @@ Deno.serve(async (req) => {
 
     // Counters
     let processed = 0, insertedOrUpdated = 0, ignoredNotScholarship = 0, failed = 0, retried = 0;
+    let invalidUrlSkipped = 0, invalidUrlFirecrawlSkipped = 0;
     let lastError: string | null = null;
 
     for (const row of rows) {
@@ -284,7 +307,24 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const normalizedUrl = normalizeUrl(rawUrl);
+      const normalized = normalizeUrl(rawUrl);
+
+      // ── Invalid URL check ──
+      if (!normalized.valid) {
+        const errMsg = `invalid_url: ${normalized.reason} (raw: ${rawUrl.slice(0, 200)})`;
+        console.warn(`Skipping invalid URL ${rowId}: ${errMsg}`);
+        await supabase.from("url_queue").update({
+          status: "failed",
+          last_error: errMsg,
+          processed_at: new Date().toISOString(),
+          attempts: attempts + 1,
+        }).eq("id", rowId);
+        invalidUrlSkipped++;
+        processed++;
+        continue;
+      }
+
+      const normalizedUrl = normalized.url;
 
       try {
         // ── Scrape with Firecrawl ──
@@ -302,6 +342,21 @@ Deno.serve(async (req) => {
 
         const scrapeData = await scrapeRes.json();
         if (!scrapeRes.ok) {
+          // Firecrawl 400 with invalid URL = permanent failure, no retry
+          if (scrapeRes.status === 400) {
+            const firecrawlErr = JSON.stringify(scrapeData).slice(0, 300);
+            const errMsg = `invalid_url_firecrawl: ${normalizedUrl} — ${firecrawlErr}`;
+            console.warn(`Firecrawl rejected URL ${rowId}: ${errMsg}`);
+            await supabase.from("url_queue").update({
+              status: "failed",
+              last_error: errMsg,
+              processed_at: new Date().toISOString(),
+              attempts: attempts + 1,
+            }).eq("id", rowId);
+            invalidUrlFirecrawlSkipped++;
+            processed++;
+            continue;
+          }
           throw new Error(`Firecrawl scrape error (${scrapeRes.status}): ${JSON.stringify(scrapeData).slice(0, 500)}`);
         }
 
@@ -441,6 +496,8 @@ Deno.serve(async (req) => {
       processed,
       inserted_or_updated: insertedOrUpdated,
       ignored_not_scholarship: ignoredNotScholarship,
+      invalid_url_skipped: invalidUrlSkipped,
+      invalid_url_firecrawl_skipped: invalidUrlFirecrawlSkipped,
       failed,
       retried,
       last_error: lastError,
