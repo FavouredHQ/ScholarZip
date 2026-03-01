@@ -16,6 +16,7 @@ import AdminUrlQueue from "./pages/admin/AdminUrlQueue";
 import AdminJobs from "./pages/admin/AdminJobs";
 import AdminDiscoverySettings from "./pages/admin/AdminDiscoverySettings";
 import AdminExtractionSettings from "./pages/admin/AdminExtractionSettings";
+import ConnectionInfo from "./pages/ConnectionInfo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -56,6 +57,7 @@ const App = () => (
               <Route path="/admin/jobs" element={<AdminGuard><AdminJobs /></AdminGuard>} />
               <Route path="/admin/discovery" element={<AdminGuard><AdminDiscoverySettings /></AdminGuard>} />
               <Route path="/admin/extraction" element={<AdminGuard><AdminExtractionSettings /></AdminGuard>} />
+              <Route path="/connection-info" element={<AdminGuard><ConnectionInfo /></AdminGuard>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </RoleGate>
