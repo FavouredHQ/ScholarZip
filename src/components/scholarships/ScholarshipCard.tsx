@@ -62,8 +62,8 @@ const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onC
   const rating = getRating(s.id);
   const topChoice = isTopChoice(s.id);
 
-  const providerType = (s as any).provider_type as string | null;
-  const providerName = (s as any).provider_name as string | null;
+  const providerType = s.provider_type;
+  const providerName = s.provider_name;
 
   const ProviderIcon = providerType ? PROVIDER_ICON[providerType] ?? Briefcase : null;
   const providerShort = providerType ? PROVIDER_SHORT[providerType] ?? providerType : null;
