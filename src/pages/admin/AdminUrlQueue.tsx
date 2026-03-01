@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { RefreshCw, Trash2, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+import { Play, Trash2, ExternalLink, ChevronLeft, ChevronRight, FileText, Eye } from "lucide-react";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 25;
@@ -21,12 +22,30 @@ const statusColors: Record<string, "default" | "secondary" | "destructive" | "ou
   failed: "destructive",
 };
 
+const confidenceBadge = (score: number | null) => {
+  if (score === null || score === undefined) return <span className="text-xs text-muted-foreground">—</span>;
+  const pct = Math.round(score * 100);
+  let variant: "default" | "secondary" | "destructive" | "outline" = "default";
+  if (pct < 50) variant = "destructive";
+  else if (pct < 75) variant = "secondary";
+  return <Badge variant={variant} className="text-[10px] font-mono">{pct}%</Badge>;
+};
+
 const AdminUrlQueue = () => {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterType, setFilterType] = useState("all");
   const [minAttempts, setMinAttempts] = useState("");
+
+  // Log viewer state
+  const [logItem, setLogItem] = useState<{ url: string; error: string | null } | null>(null);
+
+  // Screenshot viewer state
+  const [screenshotItem, setScreenshotItem] = useState<{ url: string; screenshot_url: string } | null>(null);
+
+  // Run agent state
+  const [runningId, setRunningId] = useState<string | null>(null);
 
   const { data: providerTypes } = useQuery({
     queryKey: ["provider_types"],
@@ -55,20 +74,34 @@ const AdminUrlQueue = () => {
     },
   });
 
-  const retryItem = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("url_queue").update({
+  const runAgent = async (id: string) => {
+    setRunningId(id);
+    try {
+      // Reset to pending first so the agent picks it up
+      const { error: resetErr } = await supabase.from("url_queue").update({
         status: "pending",
         last_error: null,
-      }).eq("id", id);
+        next_run_at: null,
+      } as any).eq("id", id);
+      if (resetErr) throw resetErr;
+
+      // Trigger the extraction agent with batch_size=1 to process immediately
+      const { data, error } = await supabase.functions.invoke("process-url-queue", {
+        body: {},
+        headers: { "x-manual": "true" },
+      });
       if (error) throw error;
-    },
-    onSuccess: () => {
+
+      const processed = data?.processed ?? 0;
+      toast.success(`Agent run complete: ${processed} URL(s) processed`);
       queryClient.invalidateQueries({ queryKey: ["admin_url_queue"] });
-      toast.success("Item reset to pending");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      toast.error(`Agent run failed: ${msg}`);
+    } finally {
+      setRunningId(null);
+    }
+  };
 
   const deleteItem = useMutation({
     mutationFn: async (id: string) => {
@@ -120,13 +153,13 @@ const AdminUrlQueue = () => {
               <TableRow>
                 <TableHead className="text-xs">Status</TableHead>
                 <TableHead className="text-xs">Attempts</TableHead>
+                <TableHead className="text-xs">Confidence</TableHead>
                 <TableHead className="text-xs">Type</TableHead>
                 <TableHead className="text-xs">Provider</TableHead>
                 <TableHead className="text-xs">URL</TableHead>
-                <TableHead className="text-xs">Error</TableHead>
                 <TableHead className="text-xs">Created</TableHead>
                 <TableHead className="text-xs">Processed</TableHead>
-                <TableHead className="text-xs w-24">Actions</TableHead>
+                <TableHead className="text-xs w-32">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -143,53 +176,89 @@ const AdminUrlQueue = () => {
                   <TableCell colSpan={9} className="text-center text-muted-foreground py-8">No items</TableCell>
                 </TableRow>
               ) : (
-                queueData?.items.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      <Badge variant={statusColors[item.status] ?? "secondary"} className="text-[10px]">{item.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-center">{item.attempts}</TableCell>
-                    <TableCell className="text-xs">{item.provider_type ?? "—"}</TableCell>
-                    <TableCell className="text-xs">{item.provider_name ?? "—"}</TableCell>
-                    <TableCell className="text-xs max-w-[200px] truncate">
-                      <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
-                        {item.url.replace(/^https?:\/\//, "").slice(0, 40)}
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                      </a>
-                    </TableCell>
-                    <TableCell className="text-xs text-destructive max-w-[120px] truncate" title={item.last_error ?? ""}>
-                      {item.last_error ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {item.processed_at ? new Date(item.processed_at).toLocaleDateString() : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => retryItem.mutate(item.id)} title="Retry">
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" title="Delete">
-                              <Trash2 className="h-3.5 w-3.5" />
+                queueData?.items.map((item) => {
+                  const conf = (item as any).confidence_score as number | null;
+                  const screenshot = (item as any).screenshot_url as string | null;
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <Badge variant={statusColors[item.status] ?? "secondary"} className="text-[10px]">{item.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-center">{item.attempts}</TableCell>
+                      <TableCell>{confidenceBadge(conf)}</TableCell>
+                      <TableCell className="text-xs">{item.provider_type ?? "—"}</TableCell>
+                      <TableCell className="text-xs">{item.provider_name ?? "—"}</TableCell>
+                      <TableCell className="text-xs max-w-[180px] truncate">
+                        <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                          {item.url.replace(/^https?:\/\//, "").slice(0, 35)}
+                          <ExternalLink className="h-3 w-3 shrink-0" />
+                        </a>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {item.processed_at ? new Date(item.processed_at).toLocaleDateString() : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          {/* Run Agent */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-primary"
+                            disabled={runningId === item.id || item.status === "processing"}
+                            onClick={() => runAgent(item.id)}
+                            title="Run extraction agent on this URL"
+                          >
+                            <Play className={`h-3.5 w-3.5 ${runningId === item.id ? "animate-pulse" : ""}`} />
+                          </Button>
+
+                          {/* View Log */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={`h-7 w-7 p-0 ${item.last_error ? "text-destructive" : "text-muted-foreground"}`}
+                            onClick={() => setLogItem({ url: item.url, error: item.last_error })}
+                            title="View agent log / error"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                          </Button>
+
+                          {/* Screenshot Preview */}
+                          {screenshot && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-muted-foreground"
+                              onClick={() => setScreenshotItem({ url: item.url, screenshot_url: screenshot })}
+                              title="View agent screenshot"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
                             </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete queue item?</AlertDialogTitle>
-                              <AlertDialogDescription>This will permanently remove this URL from the queue.</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => deleteItem.mutate(item.id)}>Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                          )}
+
+                          {/* Delete */}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" title="Delete">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete queue item?</AlertDialogTitle>
+                                <AlertDialogDescription>This will permanently remove this URL from the queue.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => deleteItem.mutate(item.id)}>Delete</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -209,6 +278,52 @@ const AdminUrlQueue = () => {
           </div>
         )}
       </div>
+
+      {/* Log Viewer Modal */}
+      <Dialog open={!!logItem} onOpenChange={(open) => !open && setLogItem(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Agent Log</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground truncate" title={logItem?.url}>
+              {logItem?.url}
+            </div>
+            {logItem?.error ? (
+              <pre className="bg-muted rounded-lg p-4 overflow-auto max-h-64 text-xs text-destructive whitespace-pre-wrap break-words">
+                {logItem.error}
+              </pre>
+            ) : (
+              <p className="text-sm text-muted-foreground py-4 text-center">No errors recorded for this URL.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Screenshot Preview Modal */}
+      <Dialog open={!!screenshotItem} onOpenChange={(open) => !open && setScreenshotItem(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Agent Screenshot</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground truncate" title={screenshotItem?.url}>
+              {screenshotItem?.url}
+            </div>
+            <div className="rounded-lg border border-border overflow-hidden bg-muted">
+              <img
+                src={screenshotItem?.screenshot_url ?? ""}
+                alt="Agent screenshot"
+                className="w-full h-auto max-h-[70vh] object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).alt = "Screenshot failed to load";
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 };
