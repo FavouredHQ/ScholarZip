@@ -53,7 +53,7 @@ const Index = () => {
           </h1>
 
           <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-2xl leading-relaxed animate-fade-in opacity-0" style={{ animationDelay: "0.15s" }}>
-            Our AI agents scout 5,000+ global funds daily. Stop searching endlessly—let the money find you.
+            We use automated tools to find and update 5,000+ global scholarships and grants daily. Stop searching endlessly—let the funds find you.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 mt-10 animate-fade-in opacity-0" style={{ animationDelay: "0.3s" }}>
