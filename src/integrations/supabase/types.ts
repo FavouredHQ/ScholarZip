@@ -417,6 +417,9 @@ export type Database = {
         Row: {
           consecutive_failures: number
           country: string | null
+          crawl_depth_override: number | null
+          crawl_mode: string
+          crawl_pages_override: number | null
           created_at: string
           error: string | null
           hub_url: string
@@ -432,6 +435,9 @@ export type Database = {
         Insert: {
           consecutive_failures?: number
           country?: string | null
+          crawl_depth_override?: number | null
+          crawl_mode?: string
+          crawl_pages_override?: number | null
           created_at?: string
           error?: string | null
           hub_url: string
@@ -447,6 +453,9 @@ export type Database = {
         Update: {
           consecutive_failures?: number
           country?: string | null
+          crawl_depth_override?: number | null
+          crawl_mode?: string
+          crawl_pages_override?: number | null
           created_at?: string
           error?: string | null
           hub_url?: string

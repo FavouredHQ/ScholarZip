@@ -99,7 +99,7 @@ const AdminSourceHubs = () => {
 
   // Edit state
   const [editHub, setEditHub] = useState<Tables<"source_hubs"> | null>(null);
-  const [editForm, setEditForm] = useState({ provider_name: "", provider_type: "", provider_subtype: "", country: "", hub_url: "", is_active: true });
+  const [editForm, setEditForm] = useState({ provider_name: "", provider_type: "", provider_subtype: "", country: "", hub_url: "", is_active: true, crawl_mode: "crawl", crawl_depth_override: "", crawl_pages_override: "" });
 
   // Bulk add state
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -114,7 +114,10 @@ const AdminSourceHubs = () => {
   const [rerunningId, setRerunningId] = useState<string | null>(null);
   const [rerunResult, setRerunResult] = useState<{ hubId: string; data: Record<string, unknown> } | null>(null);
 
-  const RERUN_STATUSES = ["failed", "depth_exceeded", "queued_or_limited"];
+  const isRerunnable = (status: string | null) => {
+    if (!status) return false;
+    return status === "failed" || status === "depth_exceeded" || status === "queued_or_limited" || status.startsWith("http_error_");
+  };
 
   const rerunHub = async (hubId: string) => {
     setRerunningId(hubId);
@@ -165,7 +168,7 @@ const AdminSourceHubs = () => {
   });
 
   const updateHub = useMutation({
-    mutationFn: async (hub: { id: string; provider_name: string | null; provider_type: string | null; provider_subtype: string | null; country: string | null; hub_url: string; is_active: boolean }) => {
+    mutationFn: async (hub: { id: string; provider_name: string | null; provider_type: string | null; provider_subtype: string | null; country: string | null; hub_url: string; is_active: boolean; crawl_mode: string; crawl_depth_override: number | null; crawl_pages_override: number | null }) => {
       const { error } = await supabase.from("source_hubs").update({
         provider_name: hub.provider_name || null,
         provider_type: hub.provider_type || null,
@@ -173,7 +176,10 @@ const AdminSourceHubs = () => {
         country: hub.country || null,
         hub_url: hub.hub_url,
         is_active: hub.is_active,
-      }).eq("id", hub.id);
+        crawl_mode: hub.crawl_mode,
+        crawl_depth_override: hub.crawl_depth_override,
+        crawl_pages_override: hub.crawl_pages_override,
+      } as any).eq("id", hub.id);
       if (error) throw error;
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin_source_hubs"] }); setEditHub(null); toast.success("Hub updated"); },
@@ -189,6 +195,9 @@ const AdminSourceHubs = () => {
       country: hub.country ?? "",
       hub_url: hub.hub_url,
       is_active: hub.is_active,
+      crawl_mode: (hub as any).crawl_mode ?? "crawl",
+      crawl_depth_override: (hub as any).crawl_depth_override?.toString() ?? "",
+      crawl_pages_override: (hub as any).crawl_pages_override?.toString() ?? "",
     });
   };
 
@@ -242,6 +251,9 @@ const AdminSourceHubs = () => {
       country: editForm.country || null,
       hub_url: editForm.hub_url,
       is_active: editForm.is_active,
+      crawl_mode: editForm.crawl_mode,
+      crawl_depth_override: editForm.crawl_depth_override ? parseInt(editForm.crawl_depth_override) : null,
+      crawl_pages_override: editForm.crawl_pages_override ? parseInt(editForm.crawl_pages_override) : null,
     });
   };
 
@@ -340,6 +352,8 @@ const AdminSourceHubs = () => {
               <SelectItem value="failed">Failed</SelectItem>
               <SelectItem value="depth_exceeded">Depth Exceeded</SelectItem>
               <SelectItem value="queued_or_limited">Rate Limited</SelectItem>
+              <SelectItem value="http_error_403">HTTP 403</SelectItem>
+              <SelectItem value="http_error_429">HTTP 429</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -405,7 +419,7 @@ const AdminSourceHubs = () => {
                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEditOpen(hub)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      {RERUN_STATUSES.includes(hub.status ?? "") && (
+                      {isRerunnable(hub.status) && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -491,9 +505,30 @@ const AdminSourceHubs = () => {
               <Switch checked={editForm.is_active} onCheckedChange={(v) => setEditForm({ ...editForm, is_active: v })} />
               <Label className="text-xs">Active</Label>
             </div>
+            {/* Crawl Mode */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Crawl Mode</Label>
+                <Select value={editForm.crawl_mode} onValueChange={(v) => setEditForm({ ...editForm, crawl_mode: v })}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="crawl">Crawl (multi-page)</SelectItem>
+                    <SelectItem value="single_page">Single Page (scrape)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Depth Override</Label>
+                <Input className="h-8 text-xs" type="number" min={0} placeholder="Default" value={editForm.crawl_depth_override} onChange={(e) => setEditForm({ ...editForm, crawl_depth_override: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Pages Override</Label>
+                <Input className="h-8 text-xs" type="number" min={1} placeholder="Default" value={editForm.crawl_pages_override} onChange={(e) => setEditForm({ ...editForm, crawl_pages_override: e.target.value })} />
+              </div>
+            </div>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            {editHub && RERUN_STATUSES.includes(editHub.status ?? "") && (
+            {editHub && isRerunnable(editHub.status) && (
               <Button
                 variant="outline"
                 size="sm"
