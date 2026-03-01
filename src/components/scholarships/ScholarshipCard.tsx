@@ -1,4 +1,4 @@
-import { Clock, Bookmark, BookmarkCheck, Star } from "lucide-react";
+import { Clock, Bookmark, BookmarkCheck, Star, Building2, Landmark, Briefcase } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -36,18 +36,16 @@ const isTopChoice = (id: string) => {
   return hash % 3 === 0;
 };
 
-/* Deterministic provider type */
-const getProviderType = (id: string) => {
-  const hash = id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  const types = ["University", "Government", "Foundation", "Corporate"];
-  return types[hash % types.length];
+const PROVIDER_ICON: Record<string, typeof Building2> = {
+  University: Building2,
+  Government: Landmark,
+  "External Agency": Briefcase,
 };
 
-/* Deterministic provider name from description or fallback */
-const getProviderName = (s: Tables<"scholarships">) => {
-  const first = s.description?.split(".")[0];
-  if (first && first.length < 60) return first;
-  return "Scholarship Provider";
+const PROVIDER_SHORT: Record<string, string> = {
+  University: "Uni",
+  Government: "Gov",
+  "External Agency": "Agency",
 };
 
 interface Props {
@@ -63,8 +61,13 @@ const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onC
   const img = PLACEHOLDER_IMAGES[index % PLACEHOLDER_IMAGES.length];
   const rating = getRating(s.id);
   const topChoice = isTopChoice(s.id);
-  const providerType = getProviderType(s.id);
-  const providerName = getProviderName(s);
+
+  const providerType = (s as any).provider_type as string | null;
+  const providerName = (s as any).provider_name as string | null;
+
+  const ProviderIcon = providerType ? PROVIDER_ICON[providerType] ?? Briefcase : null;
+  const providerShort = providerType ? PROVIDER_SHORT[providerType] ?? providerType : null;
+
   const desc = s.description ? s.description.slice(0, 120) + (s.description.length > 120 ? "..." : "") : "";
 
   return (
@@ -102,9 +105,12 @@ const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onC
         </button>
 
         {/* Provider type badge – bottom left */}
-        <Badge variant="secondary" className="absolute bottom-3 left-3 text-[10px] rounded-full px-2.5 py-0.5 shrink-0 bg-card/90 backdrop-blur-sm text-foreground shadow-sm">
-          {providerType}
-        </Badge>
+        {providerShort && ProviderIcon && (
+          <Badge variant="secondary" className="absolute bottom-3 left-3 text-[10px] rounded-full px-2.5 py-0.5 shrink-0 bg-card/90 backdrop-blur-sm text-foreground shadow-sm gap-1">
+            <ProviderIcon className="h-3 w-3" />
+            {providerShort}
+          </Badge>
+        )}
 
         {/* Rating – bottom right */}
         <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full px-2.5 py-1 bg-card/90 backdrop-blur-sm shadow-sm">
@@ -119,7 +125,11 @@ const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onC
           {s.title}
         </h3>
 
-        {desc && (
+        {providerName && providerName !== "Unknown" && (
+          <p className="text-xs text-muted-foreground line-clamp-1">{providerName}</p>
+        )}
+
+        {desc && !providerName && (
           <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{desc}</p>
         )}
 
@@ -130,9 +140,9 @@ const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onC
         )}
 
         {s.amount && (
-          <p className="text-sm pt-0.5">
-            <span className="font-semibold text-foreground">{fmtCurrency(s.amount, s.currency)}</span>
-            <span className="text-muted-foreground ml-1">total value</span>
+          <p className="text-lg pt-0.5">
+            <span className="font-bold text-foreground">{fmtCurrency(s.amount, s.currency)}</span>
+            <span className="text-xs text-muted-foreground ml-1">total value</span>
           </p>
         )}
       </div>
