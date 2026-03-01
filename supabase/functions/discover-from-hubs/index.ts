@@ -60,34 +60,56 @@ function hasQueryNoise(url: string): boolean {
   return QUERY_PARAMS_TO_REJECT.some((p) => lower.includes(p));
 }
 
-function isRateLimitError(status: number, body: unknown): boolean {
-  if (status === 429 || status === 409 || status === 503) return true;
-  if (typeof body === "object" && body !== null) {
-    const msg = JSON.stringify(body).toLowerCase();
-    if (msg.includes("rate") || msg.includes("concurren") || msg.includes("queue")) return true;
+function classifyError(httpStatus: number | null, body: unknown): { status: string; backoffKey: "backoff_minutes" | "general_backoff_minutes" | "depth_backoff_minutes" } {
+  const msg = typeof body === "object" && body !== null ? JSON.stringify(body).toLowerCase() : String(body).toLowerCase();
+
+  if (msg.includes("depth exceeded")) {
+    return { status: "depth_exceeded", backoffKey: "depth_backoff_minutes" };
   }
-  return false;
+  if (httpStatus && (httpStatus === 429 || httpStatus === 409 || httpStatus === 503)) {
+    return { status: "queued_or_limited", backoffKey: "backoff_minutes" };
+  }
+  if (msg.includes("rate") || msg.includes("concurren") || msg.includes("queue")) {
+    return { status: "queued_or_limited", backoffKey: "backoff_minutes" };
+  }
+  if (httpStatus && httpStatus >= 400) {
+    return { status: `http_error_${httpStatus}`, backoffKey: "general_backoff_minutes" };
+  }
+  return { status: "failed", backoffKey: "general_backoff_minutes" };
 }
 
-function isDepthError(body: unknown): boolean {
-  if (typeof body === "object" && body !== null) {
-    const msg = JSON.stringify(body).toLowerCase();
-    if (msg.includes("depth") && (msg.includes("exceed") || msg.includes("limit"))) return true;
+function extractErrorSnippet(body: unknown): string {
+  if (typeof body === "string") return body.slice(0, 1000);
+  if (typeof body === "object" && body !== null) return JSON.stringify(body).slice(0, 1000);
+  return String(body).slice(0, 1000);
+}
+
+function extractLinksFromHtml(html: string, baseUrl: string): string[] {
+  const links: string[] = [];
+  const regex = /href=["']([^"']+)["']/gi;
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    try {
+      const resolved = new URL(match[1], baseUrl).href;
+      links.push(resolved);
+    } catch { /* skip invalid */ }
   }
-  return false;
+  return links;
 }
 
 type Settings = typeof DEFAULTS;
 type Hub = Record<string, unknown>;
 
 interface HubResult {
-  status: "ok" | "failed" | "queued_or_limited" | "depth_exceeded";
+  status: string;
   urlsDiscovered: number;
   urlsAfterFilter: number;
   urlsQueued: number;
   urlsSkippedDupes: number;
   urlsSkippedExternal: number;
   urlsSkippedQuery: number;
+  firecrawl_mode_used: string;
+  firecrawl_endpoint_used: string;
 }
 
 Deno.serve(async (req) => {
@@ -217,99 +239,119 @@ Deno.serve(async (req) => {
       const hubUrl = hub.hub_url as string;
       const hubId = hub.id as string;
       const hubHostname = getHostname(hubUrl);
-      const result: HubResult = { status: "ok", urlsDiscovered: 0, urlsAfterFilter: 0, urlsQueued: 0, urlsSkippedDupes: 0, urlsSkippedExternal: 0, urlsSkippedQuery: 0 };
+      const crawlMode = (hub.crawl_mode as string) ?? "crawl";
+      const maxDepth = (hub.crawl_depth_override as number) ?? cfg.firecrawl_maxDepth;
+      const maxPages = (hub.crawl_pages_override as number) ?? cfg.firecrawl_maxPages;
 
-      console.log(`Crawling hub: ${hubUrl}`);
+      const result: HubResult = {
+        status: "ok", urlsDiscovered: 0, urlsAfterFilter: 0, urlsQueued: 0,
+        urlsSkippedDupes: 0, urlsSkippedExternal: 0, urlsSkippedQuery: 0,
+        firecrawl_mode_used: crawlMode, firecrawl_endpoint_used: crawlMode === "single_page" ? "scrape" : "crawl",
+      };
 
-      const crawlRes = await fetch(`${FIRECRAWL_API}/crawl`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: hubUrl,
-          limit: cfg.firecrawl_maxPages,
-          maxDepth: cfg.firecrawl_maxDepth,
-          scrapeOptions: { formats: ["links"] },
-        }),
-      });
-
-      const crawlData = await crawlRes.json();
-
-      if (!crawlRes.ok) {
-        if (isRateLimitError(crawlRes.status, crawlData)) {
-          const backoff = new Date(Date.now() + cfg.backoff_minutes * 60 * 1000).toISOString();
-          await supabase.from("source_hubs").update({
-            last_crawled_at: new Date().toISOString(), status: "queued_or_limited",
-            error: `Firecrawl rate/concurrency limit (HTTP ${crawlRes.status})`,
-            consecutive_failures: ((hub.consecutive_failures as number) ?? 0) + 1,
-            next_crawl_at: backoff,
-          }).eq("id", hubId);
-          result.status = "queued_or_limited";
-          return result;
-        }
-        if (isDepthError(crawlData)) {
-          const backoff = new Date(Date.now() + cfg.depth_backoff_minutes * 60 * 1000).toISOString();
-          await supabase.from("source_hubs").update({
-            last_crawled_at: new Date().toISOString(), status: "depth_exceeded",
-            error: "Firecrawl URL depth exceeded",
-            consecutive_failures: ((hub.consecutive_failures as number) ?? 0) + 1,
-            next_crawl_at: backoff,
-          }).eq("id", hubId);
-          result.status = "depth_exceeded";
-          return result;
-        }
-        throw new Error(crawlData.error || `Firecrawl returned ${crawlRes.status}`);
-      }
-
-      const crawlId = crawlData.id;
-      if (!crawlId) throw new Error("No crawl ID returned");
-
-      // Poll
-      let completed = false;
+      console.log(`Crawling hub (${crawlMode}): ${hubUrl}`);
       let allLinks: string[] = [];
-      const pollDeadline = Date.now() + 5 * 60 * 1000;
 
-      while (!completed && Date.now() < pollDeadline) {
-        await new Promise((r) => setTimeout(r, 5000));
-        const statusRes = await fetch(`${FIRECRAWL_API}/crawl/${crawlId}`, {
-          headers: { Authorization: `Bearer ${firecrawlKey}` },
+      if (crawlMode === "single_page") {
+        // ── Single Page Mode ──
+        const scrapeRes = await fetch(`${FIRECRAWL_API}/scrape`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ url: hubUrl, formats: ["links", "html"], onlyMainContent: false }),
         });
-        const statusData = await statusRes.json();
+        const scrapeData = await scrapeRes.json();
 
-        if (!statusRes.ok && isRateLimitError(statusRes.status, statusData)) {
-          const backoff = new Date(Date.now() + cfg.backoff_minutes * 60 * 1000).toISOString();
+        if (!scrapeRes.ok) {
+          const { status: errStatus, backoffKey } = classifyError(scrapeRes.status, scrapeData);
+          const backoff = new Date(Date.now() + cfg[backoffKey] * 60 * 1000).toISOString();
+          const errorMsg = extractErrorSnippet(scrapeData).slice(0, 1000);
           await supabase.from("source_hubs").update({
-            last_crawled_at: new Date().toISOString(), status: "queued_or_limited",
-            error: `Rate limited during poll (HTTP ${statusRes.status})`,
-            consecutive_failures: ((hub.consecutive_failures as number) ?? 0) + 1,
-            next_crawl_at: backoff,
+            last_crawled_at: new Date().toISOString(), status: errStatus, error: errorMsg,
+            consecutive_failures: ((hub.consecutive_failures as number) ?? 0) + 1, next_crawl_at: backoff,
           }).eq("id", hubId);
-          result.status = "queued_or_limited";
+          result.status = errStatus;
           return result;
         }
 
-        if (statusData.status === "completed") {
-          completed = true;
-          for (const page of (statusData.data ?? [])) {
-            allLinks.push(...(page.links ?? []));
-            if (page.metadata?.sourceURL) allLinks.push(page.metadata.sourceURL);
+        const data = scrapeData.data ?? scrapeData;
+        if (Array.isArray(data.links) && data.links.length > 0) {
+          allLinks = data.links;
+        } else if (data.html) {
+          allLinks = extractLinksFromHtml(data.html, hubUrl);
+        }
+        if (data.metadata?.sourceURL) allLinks.push(data.metadata.sourceURL);
+
+      } else {
+        // ── Crawl Mode (default) ──
+        const crawlRes = await fetch(`${FIRECRAWL_API}/crawl`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${firecrawlKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ url: hubUrl, limit: maxPages, maxDepth: maxDepth, scrapeOptions: { formats: ["links"] } }),
+        });
+        const crawlData = await crawlRes.json();
+
+        if (!crawlRes.ok) {
+          const { status: errStatus, backoffKey } = classifyError(crawlRes.status, crawlData);
+          const backoff = new Date(Date.now() + cfg[backoffKey] * 60 * 1000).toISOString();
+          const errorMsg = extractErrorSnippet(crawlData).slice(0, 1000);
+          await supabase.from("source_hubs").update({
+            last_crawled_at: new Date().toISOString(), status: errStatus, error: errorMsg,
+            consecutive_failures: ((hub.consecutive_failures as number) ?? 0) + 1, next_crawl_at: backoff,
+          }).eq("id", hubId);
+          result.status = errStatus;
+          if (errStatus === "queued_or_limited" && cfg.stop_on_limit) stopEarly = true;
+          return result;
+        }
+
+        const crawlId = crawlData.id;
+        if (!crawlId) throw new Error("No crawl ID returned");
+
+        // Poll
+        let completed = false;
+        const pollDeadline = Date.now() + 5 * 60 * 1000;
+
+        while (!completed && Date.now() < pollDeadline) {
+          await new Promise((r) => setTimeout(r, 5000));
+          const statusRes = await fetch(`${FIRECRAWL_API}/crawl/${crawlId}`, {
+            headers: { Authorization: `Bearer ${firecrawlKey}` },
+          });
+          const statusData = await statusRes.json();
+
+          if (!statusRes.ok) {
+            const { status: errStatus, backoffKey } = classifyError(statusRes.status, statusData);
+            if (errStatus === "queued_or_limited") {
+              const backoff = new Date(Date.now() + cfg[backoffKey] * 60 * 1000).toISOString();
+              await supabase.from("source_hubs").update({
+                last_crawled_at: new Date().toISOString(), status: errStatus,
+                error: `Rate limited during poll (HTTP ${statusRes.status})`,
+                consecutive_failures: ((hub.consecutive_failures as number) ?? 0) + 1, next_crawl_at: backoff,
+              }).eq("id", hubId);
+              result.status = errStatus;
+              return result;
+            }
           }
-        } else if (statusData.status === "failed") {
-          if (isDepthError(statusData)) {
-            const backoff = new Date(Date.now() + cfg.depth_backoff_minutes * 60 * 1000).toISOString();
+
+          if (statusData.status === "completed") {
+            completed = true;
+            for (const page of (statusData.data ?? [])) {
+              allLinks.push(...(page.links ?? []));
+              if (page.metadata?.sourceURL) allLinks.push(page.metadata.sourceURL);
+            }
+          } else if (statusData.status === "failed") {
+            const { status: errStatus, backoffKey } = classifyError(null, statusData);
+            const backoff = new Date(Date.now() + cfg[backoffKey] * 60 * 1000).toISOString();
+            const errorMsg = extractErrorSnippet(statusData).slice(0, 1000);
             await supabase.from("source_hubs").update({
-              last_crawled_at: new Date().toISOString(), status: "depth_exceeded",
-              error: "Crawl failed: depth exceeded",
-              consecutive_failures: ((hub.consecutive_failures as number) ?? 0) + 1,
-              next_crawl_at: backoff,
+              last_crawled_at: new Date().toISOString(), status: errStatus, error: errorMsg,
+              consecutive_failures: ((hub.consecutive_failures as number) ?? 0) + 1, next_crawl_at: backoff,
             }).eq("id", hubId);
-            result.status = "depth_exceeded";
+            result.status = errStatus;
             return result;
           }
-          throw new Error(statusData.error || "Crawl failed");
         }
-      }
 
-      if (!completed) throw new Error("Crawl timed out after 5 minutes");
+        if (!completed) throw new Error("Crawl timed out after 5 minutes");
+      }
 
       const uniqueLinks = [...new Set(allLinks)];
       result.urlsDiscovered = uniqueLinks.length;
@@ -317,26 +359,22 @@ Deno.serve(async (req) => {
       // Filter pipeline
       let candidates = uniqueLinks;
 
-      // Same domain filter
       if (cfg.same_domain_only) {
         const before = candidates.length;
         candidates = candidates.filter((u) => getHostname(u) === hubHostname);
         result.urlsSkippedExternal = before - candidates.length;
       }
 
-      // Query noise filter
       if (cfg.ignore_query_urls) {
         const before = candidates.length;
         candidates = candidates.filter((u) => !hasQueryNoise(u));
         result.urlsSkippedQuery = before - candidates.length;
       }
 
-      // PDF filter
       if (!cfg.allow_pdfs) {
         candidates = candidates.filter((u) => !u.toLowerCase().endsWith(".pdf"));
       }
 
-      // Keyword filter
       candidates = candidates.filter(shouldIncludeUrl);
       result.urlsAfterFilter = candidates.length;
 
@@ -398,14 +436,14 @@ Deno.serve(async (req) => {
         else if (r.status === "queued_or_limited") {
           hubsLimited++;
           if (cfg.stop_on_limit) stopEarly = true;
-        }
+        } else hubsFailed++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`Hub ${hub.hub_url} failed:`, msg);
         const backoff = new Date(Date.now() + cfg.general_backoff_minutes * 60 * 1000).toISOString();
         await supabase.from("source_hubs").update({
           last_crawled_at: new Date().toISOString(), status: "failed",
-          error: msg.slice(0, 500),
+          error: msg.slice(0, 1000),
           consecutive_failures: ((hub.consecutive_failures as number) ?? 0) + 1,
           next_crawl_at: backoff,
         }).eq("id", hub.id as string);
@@ -414,13 +452,11 @@ Deno.serve(async (req) => {
     };
 
     if (cfg.parallel_hubs <= 1) {
-      // Sequential
       for (const hub of hubs) {
         if (stopEarly || urlsQueuedTotal >= cfg.max_total_urls_to_queue_per_run) break;
         await processHubSafe(hub);
       }
     } else {
-      // Limited concurrency
       const concurrency = cfg.parallel_hubs;
       let idx = 0;
       while (idx < hubs.length && !stopEarly && urlsQueuedTotal < cfg.max_total_urls_to_queue_per_run) {
