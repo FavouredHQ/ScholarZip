@@ -100,6 +100,24 @@ export type Database = {
           },
         ]
       }
+      job_locks: {
+        Row: {
+          job_name: string
+          locked_until: string
+          updated_at: string
+        }
+        Insert: {
+          job_name: string
+          locked_until?: string
+          updated_at?: string
+        }
+        Update: {
+          job_name?: string
+          locked_until?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       matches: {
         Row: {
           ai_reasoning: string | null
