@@ -216,6 +216,7 @@ export type Database = {
       scholarships: {
         Row: {
           amount: number | null
+          content_hash: string | null
           created_at: string | null
           currency: string | null
           deadline: string | null
@@ -223,6 +224,7 @@ export type Database = {
           eligibility_criteria: Json | null
           id: string
           is_active: boolean | null
+          last_verified_at: string | null
           provider_id: string | null
           provider_name: string | null
           provider_type: string | null
@@ -232,6 +234,7 @@ export type Database = {
         }
         Insert: {
           amount?: number | null
+          content_hash?: string | null
           created_at?: string | null
           currency?: string | null
           deadline?: string | null
@@ -239,6 +242,7 @@ export type Database = {
           eligibility_criteria?: Json | null
           id?: string
           is_active?: boolean | null
+          last_verified_at?: string | null
           provider_id?: string | null
           provider_name?: string | null
           provider_type?: string | null
@@ -248,6 +252,7 @@ export type Database = {
         }
         Update: {
           amount?: number | null
+          content_hash?: string | null
           created_at?: string | null
           currency?: string | null
           deadline?: string | null
@@ -255,6 +260,7 @@ export type Database = {
           eligibility_criteria?: Json | null
           id?: string
           is_active?: boolean | null
+          last_verified_at?: string | null
           provider_id?: string | null
           provider_name?: string | null
           provider_type?: string | null
