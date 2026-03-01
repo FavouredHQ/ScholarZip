@@ -68,7 +68,7 @@ const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onC
   const ProviderIcon = providerType ? PROVIDER_ICON[providerType] ?? Briefcase : null;
   const providerShort = providerType ? PROVIDER_SHORT[providerType] ?? providerType : null;
 
-  const desc = s.description ? s.description.slice(0, 120) + (s.description.length > 120 ? "..." : "") : "";
+  const desc = s.description ? s.description.slice(0, 180) + (s.description.length > 180 ? "..." : "") : "";
 
   return (
     <div className="group cursor-pointer" onClick={onClick}>
@@ -130,7 +130,7 @@ const ScholarshipCard = ({ scholarship: s, index, isSaved, isSaving, onSave, onC
         )}
 
         {desc && (
-          <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{desc}</p>
+          <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{desc}</p>
         )}
 
         {s.deadline && (
