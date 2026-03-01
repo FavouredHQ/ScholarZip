@@ -8,9 +8,7 @@ import {
   Target,
   Shield,
   ArrowRight,
-  CheckCircle2,
   Globe,
-  Zap,
   BarChart3,
   Users,
 } from "lucide-react";
@@ -23,9 +21,9 @@ const stats = [
 ];
 
 const steps = [
-  { icon: GraduationCap, title: "Build Your Profile", desc: "Education level, country of origin, target destinations—our AI needs just 60 seconds of your time.", step: "01" },
-  { icon: Zap, title: "AI Scouts Match You", desc: "Our agents scan thousands of funds daily, scoring each one against your unique academic fingerprint.", step: "02" },
-  { icon: CheckCircle2, title: "Apply & Win", desc: "Apply directly through ScholarFlow. Track every application status in one clean dashboard.", step: "03" },
+  { title: "Build Your Profile", desc: "Education level, country of origin, target destinations—we just need 3 minutes of your time.", step: "01" },
+  { title: "Our Automated Technology Matches You", desc: "We scan thousands of funds daily, scoring each one against your unique academic fingerprint.", step: "02" },
+  { title: "Go Directly to Scholarship Page and Apply", desc: "We redirect you to apply on the Scholarship or Grant page and take note of your application.", step: "03" },
 ];
 
 const Index = () => {
@@ -94,11 +92,8 @@ const Index = () => {
             <div key={f.step} className="bg-card rounded-2xl border border-border p-8 shadow-card hover:shadow-card-hover transition-all group">
               <div className="flex items-center gap-3 mb-5">
                 <span className="text-4xl font-bold text-accent/20">{f.step}</span>
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl gradient-gold group-hover:shadow-gold transition-shadow">
-                  <f.icon className="h-5 w-5 text-accent-foreground" />
-                </div>
+                <h3 className="text-xl font-semibold">{f.title}</h3>
               </div>
-              <h3 className="text-xl font-semibold mb-2">{f.title}</h3>
               <p className="text-muted-foreground text-sm leading-relaxed">{f.desc}</p>
             </div>
           ))}
