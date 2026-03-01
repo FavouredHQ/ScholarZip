@@ -384,6 +384,7 @@ export type Database = {
           is_active: boolean
           last_crawled_at: string | null
           provider_name: string | null
+          provider_subtype: string | null
           provider_type: string | null
           status: string | null
         }
@@ -396,6 +397,7 @@ export type Database = {
           is_active?: boolean
           last_crawled_at?: string | null
           provider_name?: string | null
+          provider_subtype?: string | null
           provider_type?: string | null
           status?: string | null
         }
@@ -408,10 +410,18 @@ export type Database = {
           is_active?: boolean
           last_crawled_at?: string | null
           provider_name?: string | null
+          provider_subtype?: string | null
           provider_type?: string | null
           status?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "source_hubs_provider_subtype_fkey"
+            columns: ["provider_subtype"]
+            isOneToOne: false
+            referencedRelation: "provider_subtypes"
+            referencedColumns: ["code"]
+          },
           {
             foreignKeyName: "source_hubs_provider_type_fkey"
             columns: ["provider_type"]
@@ -430,6 +440,7 @@ export type Database = {
           last_error: string | null
           processed_at: string | null
           provider_name: string | null
+          provider_subtype: string | null
           provider_type: string | null
           status: string
           url: string
@@ -442,6 +453,7 @@ export type Database = {
           last_error?: string | null
           processed_at?: string | null
           provider_name?: string | null
+          provider_subtype?: string | null
           provider_type?: string | null
           status?: string
           url: string
@@ -454,6 +466,7 @@ export type Database = {
           last_error?: string | null
           processed_at?: string | null
           provider_name?: string | null
+          provider_subtype?: string | null
           provider_type?: string | null
           status?: string
           url?: string
@@ -465,6 +478,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "source_hubs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "url_queue_provider_subtype_fkey"
+            columns: ["provider_subtype"]
+            isOneToOne: false
+            referencedRelation: "provider_subtypes"
+            referencedColumns: ["code"]
           },
           {
             foreignKeyName: "url_queue_provider_type_fkey"
