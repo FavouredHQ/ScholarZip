@@ -6,7 +6,7 @@ import type { Tables } from "@/integrations/supabase/types";
 
 const PLACEHOLDER_IMAGES = [
   "https://images.unsplash.com/photo-1562774053-701939374585?w=600&h=400&fit=crop",
-  "https://images.unsplash.com/photo-1523050854058-8df90110c476?w=600&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=600&h=400&fit=crop",
   "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=600&h=400&fit=crop",
   "https://images.unsplash.com/photo-1523580846011-d3a5bc25702b?w=600&h=400&fit=crop",
   "https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=600&h=400&fit=crop",
