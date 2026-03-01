@@ -184,6 +184,47 @@ export type Database = {
         }
         Relationships: []
       }
+      provider_subtypes: {
+        Row: {
+          code: string
+          label: string
+          parent_type: string
+        }
+        Insert: {
+          code: string
+          label: string
+          parent_type: string
+        }
+        Update: {
+          code?: string
+          label?: string
+          parent_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_subtypes_parent_type_fkey"
+            columns: ["parent_type"]
+            isOneToOne: false
+            referencedRelation: "provider_types"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      provider_types: {
+        Row: {
+          code: string
+          label: string
+        }
+        Insert: {
+          code: string
+          label: string
+        }
+        Update: {
+          code?: string
+          label?: string
+        }
+        Relationships: []
+      }
       providers: {
         Row: {
           country: string | null
@@ -209,7 +250,15 @@ export type Database = {
           provider_type?: string | null
           website?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "providers_provider_type_fkey"
+            columns: ["provider_type"]
+            isOneToOne: false
+            referencedRelation: "provider_types"
+            referencedColumns: ["code"]
+          },
+        ]
       }
       saved_scholarships: {
         Row: {
@@ -255,7 +304,8 @@ export type Database = {
           last_verified_at: string | null
           provider_id: string | null
           provider_name: string | null
-          provider_type: string | null
+          provider_subtype: string | null
+          provider_type: string
           source_url: string | null
           tags: string[] | null
           title: string
@@ -274,7 +324,8 @@ export type Database = {
           last_verified_at?: string | null
           provider_id?: string | null
           provider_name?: string | null
-          provider_type?: string | null
+          provider_subtype?: string | null
+          provider_type?: string
           source_url?: string | null
           tags?: string[] | null
           title: string
@@ -293,7 +344,8 @@ export type Database = {
           last_verified_at?: string | null
           provider_id?: string | null
           provider_name?: string | null
-          provider_type?: string | null
+          provider_subtype?: string | null
+          provider_type?: string
           source_url?: string | null
           tags?: string[] | null
           title?: string
@@ -305,6 +357,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "providers"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scholarships_provider_subtype_fkey"
+            columns: ["provider_subtype"]
+            isOneToOne: false
+            referencedRelation: "provider_subtypes"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "scholarships_provider_type_fkey"
+            columns: ["provider_type"]
+            isOneToOne: false
+            referencedRelation: "provider_types"
+            referencedColumns: ["code"]
           },
         ]
       }
@@ -345,7 +411,15 @@ export type Database = {
           provider_type?: string | null
           status?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "source_hubs_provider_type_fkey"
+            columns: ["provider_type"]
+            isOneToOne: false
+            referencedRelation: "provider_types"
+            referencedColumns: ["code"]
+          },
+        ]
       }
       url_queue: {
         Row: {
@@ -391,6 +465,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "source_hubs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "url_queue_provider_type_fkey"
+            columns: ["provider_type"]
+            isOneToOne: false
+            referencedRelation: "provider_types"
+            referencedColumns: ["code"]
           },
         ]
       }
