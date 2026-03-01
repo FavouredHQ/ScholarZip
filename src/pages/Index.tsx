@@ -47,8 +47,9 @@ const Index = () => {
             AI-Powered · 5,000+ Funds Indexed Daily
           </div>
 
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-foreground max-w-4xl leading-[1.1] animate-fade-in opacity-0">
-            The World's Scholarships and Grants,{" "}
+          <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-foreground max-w-4xl leading-[1.1] animate-fade-in opacity-0">
+            The World's Scholarships and Grants,
+            <br />
             <span className="text-gradient-gold">Matched to You.</span>
           </h1>
 
