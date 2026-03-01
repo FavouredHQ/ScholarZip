@@ -216,6 +216,7 @@ export type Database = {
       scholarships: {
         Row: {
           amount: number | null
+          confidence_score: number | null
           content_hash: string | null
           created_at: string | null
           currency: string | null
@@ -234,6 +235,7 @@ export type Database = {
         }
         Insert: {
           amount?: number | null
+          confidence_score?: number | null
           content_hash?: string | null
           created_at?: string | null
           currency?: string | null
@@ -252,6 +254,7 @@ export type Database = {
         }
         Update: {
           amount?: number | null
+          confidence_score?: number | null
           content_hash?: string | null
           created_at?: string | null
           currency?: string | null

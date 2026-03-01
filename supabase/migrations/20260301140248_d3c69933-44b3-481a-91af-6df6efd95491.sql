@@ -1,0 +1,1 @@
+ALTER TABLE public.scholarships ADD COLUMN confidence_score numeric;
