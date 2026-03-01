@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Pencil, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
@@ -20,9 +19,78 @@ import { useCountries } from "@/hooks/useCountries";
 
 const PAGE_SIZE = 20;
 
+/* ------------------------------------------------------------------ */
+/*  Hook: provider types + subtypes from DB                           */
+/* ------------------------------------------------------------------ */
+const useProviderLookups = () => {
+  const { data: providerTypes } = useQuery({
+    queryKey: ["provider_types"],
+    queryFn: async () => {
+      const { data } = await supabase.from("provider_types").select("*");
+      return data ?? [];
+    },
+  });
+
+  const { data: providerSubtypes } = useQuery({
+    queryKey: ["provider_subtypes"],
+    queryFn: async () => {
+      const { data } = await supabase.from("provider_subtypes").select("*");
+      return data ?? [];
+    },
+  });
+
+  const subtypesFor = (parentType: string) =>
+    (providerSubtypes ?? []).filter((s) => s.parent_type === parentType);
+
+  return { providerTypes: providerTypes ?? [], providerSubtypes: providerSubtypes ?? [], subtypesFor };
+};
+
+/* ------------------------------------------------------------------ */
+/*  Subtype Select (reused in edit + bulk)                            */
+/* ------------------------------------------------------------------ */
+const SubtypeSelect = ({
+  providerType,
+  value,
+  onChange,
+  subtypesFor,
+  required,
+}: {
+  providerType: string;
+  value: string;
+  onChange: (v: string) => void;
+  subtypesFor: (t: string) => { code: string; label: string }[];
+  required?: boolean;
+}) => {
+  const options = subtypesFor(providerType);
+  if (!providerType || options.length === 0) return null;
+
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">
+        Subtype {required && <span className="text-destructive">*</span>}
+      </Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-8 text-xs">
+          <SelectValue placeholder="Select subtype..." />
+        </SelectTrigger>
+        <SelectContent className="max-h-60">
+          {!required && <SelectItem value="__none__">None</SelectItem>}
+          {options.map((s) => (
+            <SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/*  Main Component                                                     */
+/* ------------------------------------------------------------------ */
 const AdminSourceHubs = () => {
   const queryClient = useQueryClient();
   const { countries } = useCountries();
+  const { providerTypes, subtypesFor } = useProviderLookups();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
@@ -31,23 +99,16 @@ const AdminSourceHubs = () => {
 
   // Edit state
   const [editHub, setEditHub] = useState<Tables<"source_hubs"> | null>(null);
-  const [editForm, setEditForm] = useState({ provider_name: "", provider_type: "", country: "", hub_url: "", is_active: true });
+  const [editForm, setEditForm] = useState({ provider_name: "", provider_type: "", provider_subtype: "", country: "", hub_url: "", is_active: true });
 
   // Bulk add state
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkUrls, setBulkUrls] = useState("");
   const [bulkType, setBulkType] = useState("");
+  const [bulkSubtype, setBulkSubtype] = useState("");
   const [bulkName, setBulkName] = useState("");
   const [bulkCountry, setBulkCountry] = useState("");
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
-
-  const { data: providerTypes } = useQuery({
-    queryKey: ["provider_types"],
-    queryFn: async () => {
-      const { data } = await supabase.from("provider_types").select("*");
-      return data ?? [];
-    },
-  });
 
   const { data: hubsData, isLoading } = useQuery({
     queryKey: ["admin_source_hubs", page, search, filterType, filterActive, filterStatus],
@@ -58,9 +119,7 @@ const AdminSourceHubs = () => {
         .order("created_at", { ascending: false })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-      if (search) {
-        query = query.or(`provider_name.ilike.%${search}%,hub_url.ilike.%${search}%`);
-      }
+      if (search) query = query.or(`provider_name.ilike.%${search}%,hub_url.ilike.%${search}%`);
       if (filterType !== "all") query = query.eq("provider_type", filterType);
       if (filterActive === "active") query = query.eq("is_active", true);
       if (filterActive === "inactive") query = query.eq("is_active", false);
@@ -78,29 +137,23 @@ const AdminSourceHubs = () => {
       const { error } = await supabase.from("source_hubs").update({ is_active }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin_source_hubs"] });
-      toast.success("Hub updated");
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin_source_hubs"] }); toast.success("Hub updated"); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const updateHub = useMutation({
-    mutationFn: async (hub: { id: string; provider_name: string | null; provider_type: string | null; country: string | null; hub_url: string; is_active: boolean }) => {
+    mutationFn: async (hub: { id: string; provider_name: string | null; provider_type: string | null; provider_subtype: string | null; country: string | null; hub_url: string; is_active: boolean }) => {
       const { error } = await supabase.from("source_hubs").update({
         provider_name: hub.provider_name || null,
         provider_type: hub.provider_type || null,
+        provider_subtype: hub.provider_subtype || null,
         country: hub.country || null,
         hub_url: hub.hub_url,
         is_active: hub.is_active,
       }).eq("id", hub.id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin_source_hubs"] });
-      setEditHub(null);
-      toast.success("Hub updated");
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin_source_hubs"] }); setEditHub(null); toast.success("Hub updated"); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -109,29 +162,26 @@ const AdminSourceHubs = () => {
     setEditForm({
       provider_name: hub.provider_name ?? "",
       provider_type: hub.provider_type ?? "",
+      provider_subtype: (hub as any).provider_subtype ?? "",
       country: hub.country ?? "",
       hub_url: hub.hub_url,
       is_active: hub.is_active,
     });
   };
 
-  const handleBulkAdd = async () => {
-    setBulkSubmitting(true);
-    const urls = bulkUrls
-      .split("\n")
-      .map((u) => u.trim())
-      .filter((u) => u.length > 0);
+  const isExternalAgency = (type: string) => type === "External Agency";
 
-    if (urls.length === 0) {
-      toast.error("No URLs provided");
-      setBulkSubmitting(false);
+  const handleBulkAdd = async () => {
+    if (isExternalAgency(bulkType) && !bulkSubtype) {
+      toast.error("Subtype is required for External Agency");
       return;
     }
+    setBulkSubmitting(true);
+    const urls = bulkUrls.split("\n").map((u) => u.trim()).filter((u) => u.length > 0);
+    if (urls.length === 0) { toast.error("No URLs provided"); setBulkSubmitting(false); return; }
 
-    // Fetch existing hub_urls to dedupe
     const { data: existing } = await supabase.from("source_hubs").select("hub_url");
     const existingSet = new Set((existing ?? []).map((h) => h.hub_url));
-
     const newUrls = [...new Set(urls)].filter((u) => !existingSet.has(u));
     const skipped = urls.length - newUrls.length;
 
@@ -139,26 +189,37 @@ const AdminSourceHubs = () => {
       const rows = newUrls.map((url) => ({
         hub_url: url,
         provider_type: bulkType || null,
+        provider_subtype: bulkSubtype && bulkSubtype !== "__none__" ? bulkSubtype : null,
         provider_name: bulkName || null,
         country: bulkCountry || null,
         is_active: true,
       }));
       const { error } = await supabase.from("source_hubs").insert(rows);
-      if (error) {
-        toast.error(error.message);
-        setBulkSubmitting(false);
-        return;
-      }
+      if (error) { toast.error(error.message); setBulkSubmitting(false); return; }
     }
 
     toast.success(`Added ${newUrls.length}, skipped ${skipped} duplicates`);
     setBulkOpen(false);
-    setBulkUrls("");
-    setBulkType("");
-    setBulkName("");
-    setBulkCountry("");
+    setBulkUrls(""); setBulkType(""); setBulkSubtype(""); setBulkName(""); setBulkCountry("");
     setBulkSubmitting(false);
     queryClient.invalidateQueries({ queryKey: ["admin_source_hubs"] });
+  };
+
+  const handleEditSave = () => {
+    if (!editHub) return;
+    if (isExternalAgency(editForm.provider_type) && !editForm.provider_subtype) {
+      toast.error("Subtype is required for External Agency");
+      return;
+    }
+    updateHub.mutate({
+      id: editHub.id,
+      provider_name: editForm.provider_name || null,
+      provider_type: editForm.provider_type || null,
+      provider_subtype: editForm.provider_subtype && editForm.provider_subtype !== "__none__" ? editForm.provider_subtype : null,
+      country: editForm.country || null,
+      hub_url: editForm.hub_url,
+      is_active: editForm.is_active,
+    });
   };
 
   const totalPages = Math.ceil((hubsData?.total ?? 0) / PAGE_SIZE);
@@ -175,41 +236,48 @@ const AdminSourceHubs = () => {
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Bulk Add Hubs</DialogTitle>
-              </DialogHeader>
+              <DialogHeader><DialogTitle>Bulk Add Hubs</DialogTitle></DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Hub URLs (one per line)</Label>
-                  <Textarea rows={8} value={bulkUrls} onChange={(e) => setBulkUrls(e.target.value)} placeholder="https://example.com/scholarships&#10;https://..." />
+                  <Textarea rows={8} value={bulkUrls} onChange={(e) => setBulkUrls(e.target.value)} placeholder={"https://example.com/scholarships\nhttps://..."} />
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Provider Type</Label>
-                    <Select value={bulkType} onValueChange={setBulkType}>
+                    <Select value={bulkType} onValueChange={(v) => { setBulkType(v); setBulkSubtype(""); }}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
                       <SelectContent>
-                        {providerTypes?.map((t) => (
+                        {providerTypes.map((t) => (
                           <SelectItem key={t.code} value={t.code}>{t.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
+                  <SubtypeSelect
+                    providerType={bulkType}
+                    value={bulkSubtype}
+                    onChange={setBulkSubtype}
+                    subtypesFor={subtypesFor}
+                    required={isExternalAgency(bulkType)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Provider Name</Label>
                     <Input className="h-8 text-xs" value={bulkName} onChange={(e) => setBulkName(e.target.value)} />
                   </div>
-                   <div className="space-y-1">
-                     <Label className="text-xs">Country</Label>
-                     <Select value={bulkCountry} onValueChange={setBulkCountry}>
-                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
-                       <SelectContent className="max-h-60">
-                         {countries.map((c) => (
-                           <SelectItem key={c.code} value={c.name}>{c.name}</SelectItem>
-                         ))}
-                       </SelectContent>
-                     </Select>
-                   </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Country</Label>
+                    <Select value={bulkCountry} onValueChange={setBulkCountry}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {countries.map((c) => (
+                          <SelectItem key={c.code} value={c.name}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
               <DialogFooter>
@@ -228,7 +296,7 @@ const AdminSourceHubs = () => {
             <SelectTrigger className="h-8 text-xs w-40"><SelectValue placeholder="Provider Type" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              {providerTypes?.map((t) => (
+              {providerTypes.map((t) => (
                 <SelectItem key={t.code} value={t.code}>{t.label}</SelectItem>
               ))}
             </SelectContent>
@@ -257,6 +325,7 @@ const AdminSourceHubs = () => {
             <TableHeader>
               <TableRow>
                 <TableHead className="text-xs">Type</TableHead>
+                <TableHead className="text-xs">Subtype</TableHead>
                 <TableHead className="text-xs">Provider</TableHead>
                 <TableHead className="text-xs">Country</TableHead>
                 <TableHead className="text-xs">URL</TableHead>
@@ -271,19 +340,20 @@ const AdminSourceHubs = () => {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : hubsData?.hubs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">No hubs found</TableCell>
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">No hubs found</TableCell>
                 </TableRow>
               ) : (
                 hubsData?.hubs.map((hub) => (
                   <TableRow key={hub.id}>
                     <TableCell className="text-xs">{hub.provider_type ?? "—"}</TableCell>
+                    <TableCell className="text-xs">{(hub as any).provider_subtype ?? "—"}</TableCell>
                     <TableCell className="text-xs font-medium">{hub.provider_name ?? "—"}</TableCell>
                     <TableCell className="text-xs">{hub.country ?? "—"}</TableCell>
                     <TableCell className="text-xs max-w-[200px] truncate">
@@ -293,27 +363,19 @@ const AdminSourceHubs = () => {
                       </a>
                     </TableCell>
                     <TableCell>
-                      <Switch
-                        checked={hub.is_active}
-                        onCheckedChange={(checked) => toggleActive.mutate({ id: hub.id, is_active: checked })}
-                        className="scale-75"
-                      />
+                      <Switch checked={hub.is_active} onCheckedChange={(checked) => toggleActive.mutate({ id: hub.id, is_active: checked })} className="scale-75" />
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {hub.last_crawled_at ? new Date(hub.last_crawled_at).toLocaleDateString() : "—"}
                     </TableCell>
                     <TableCell>
                       {hub.status ? (
-                        <Badge variant={hub.status === "ok" ? "default" : "destructive"} className="text-[10px]">
-                          {hub.status}
-                        </Badge>
+                        <Badge variant={hub.status === "ok" ? "default" : "destructive"} className="text-[10px]">{hub.status}</Badge>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-xs text-destructive max-w-[120px] truncate" title={hub.error ?? ""}>
-                      {hub.error ?? "—"}
-                    </TableCell>
+                    <TableCell className="text-xs text-destructive max-w-[120px] truncate" title={hub.error ?? ""}>{hub.error ?? "—"}</TableCell>
                     <TableCell>
                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEditOpen(hub)}>
                         <Pencil className="h-3.5 w-3.5" />
@@ -345,9 +407,7 @@ const AdminSourceHubs = () => {
       {/* Edit Dialog */}
       <Dialog open={!!editHub} onOpenChange={(open) => !open && setEditHub(null)}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Hub</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Edit Hub</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1">
               <Label className="text-xs">Hub URL</Label>
@@ -356,21 +416,28 @@ const AdminSourceHubs = () => {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Provider Type</Label>
-                <Select value={editForm.provider_type} onValueChange={(v) => setEditForm({ ...editForm, provider_type: v })}>
+                <Select value={editForm.provider_type} onValueChange={(v) => setEditForm({ ...editForm, provider_type: v, provider_subtype: "" })}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
                   <SelectContent>
-                    {providerTypes?.map((t) => (
+                    {providerTypes.map((t) => (
                       <SelectItem key={t.code} value={t.code}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+              <SubtypeSelect
+                providerType={editForm.provider_type}
+                value={editForm.provider_subtype}
+                onChange={(v) => setEditForm({ ...editForm, provider_subtype: v })}
+                subtypesFor={subtypesFor}
+                required={isExternalAgency(editForm.provider_type)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Provider Name</Label>
                 <Input className="h-8 text-xs" value={editForm.provider_name} onChange={(e) => setEditForm({ ...editForm, provider_name: e.target.value })} />
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Country</Label>
                 <Select value={editForm.country} onValueChange={(v) => setEditForm({ ...editForm, country: v })}>
@@ -382,19 +449,14 @@ const AdminSourceHubs = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-2 pt-4">
-                <Switch checked={editForm.is_active} onCheckedChange={(v) => setEditForm({ ...editForm, is_active: v })} />
-                <Label className="text-xs">Active</Label>
-              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={editForm.is_active} onCheckedChange={(v) => setEditForm({ ...editForm, is_active: v })} />
+              <Label className="text-xs">Active</Label>
             </div>
           </div>
           <DialogFooter>
-            <Button
-              onClick={() => editHub && updateHub.mutate({ id: editHub.id, ...editForm, provider_name: editForm.provider_name || null, provider_type: editForm.provider_type || null, country: editForm.country || null })}
-              className="gradient-gold text-accent-foreground font-semibold"
-            >
-              Save
-            </Button>
+            <Button onClick={handleEditSave} className="gradient-gold text-accent-foreground font-semibold">Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
