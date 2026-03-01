@@ -1,0 +1,1 @@
+ALTER TABLE public.url_queue ADD CONSTRAINT url_queue_url_unique UNIQUE (url);
