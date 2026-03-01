@@ -454,6 +454,7 @@ export type Database = {
           consecutive_failures: number
           country: string | null
           crawl_depth_override: number | null
+          crawl_frequency: string
           crawl_mode: string
           crawl_pages_override: number | null
           created_at: string
@@ -472,6 +473,7 @@ export type Database = {
           consecutive_failures?: number
           country?: string | null
           crawl_depth_override?: number | null
+          crawl_frequency?: string
           crawl_mode?: string
           crawl_pages_override?: number | null
           created_at?: string
@@ -490,6 +492,7 @@ export type Database = {
           consecutive_failures?: number
           country?: string | null
           crawl_depth_override?: number | null
+          crawl_frequency?: string
           crawl_mode?: string
           crawl_pages_override?: number | null
           created_at?: string
