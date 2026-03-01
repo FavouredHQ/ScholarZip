@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Pencil, ExternalLink, ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
+import { Plus, Pencil, ExternalLink, ChevronLeft, ChevronRight, RotateCw, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 import { useCountries } from "@/hooks/useCountries";
@@ -44,6 +44,82 @@ const useProviderLookups = () => {
 
   return { providerTypes: providerTypes ?? [], providerSubtypes: providerSubtypes ?? [], subtypesFor };
 };
+
+/* ------------------------------------------------------------------ */
+/*  Hook: discovery counts per hub                                    */
+/* ------------------------------------------------------------------ */
+const useDiscoveryCounts = () => {
+  return useQuery({
+    queryKey: ["hub_discovery_counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("url_queue")
+        .select("discovered_from");
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      (data ?? []).forEach((row) => {
+        if (row.discovered_from) {
+          counts[row.discovered_from] = (counts[row.discovered_from] || 0) + 1;
+        }
+      });
+      return counts;
+    },
+    staleTime: 30_000,
+  });
+};
+
+/* ------------------------------------------------------------------ */
+/*  Helper: Agent status badge                                        */
+/* ------------------------------------------------------------------ */
+const AgentStatusBadge = ({ status, lastCrawledAt }: { status: string | null; lastCrawledAt: string | null }) => {
+  if (!status) return <span className="text-xs text-muted-foreground">—</span>;
+
+  const isOk = status === "ok" || status === "ok_fallback_single_page";
+  const isFallback = status === "ok_fallback_single_page";
+  const agentLabel = isFallback ? "Scout-FB" : "Scout-01";
+
+  let variant: "default" | "secondary" | "destructive" | "outline" = "default";
+  let label = `${agentLabel} Active`;
+
+  if (isOk) {
+    variant = "default";
+    label = `${agentLabel} Active`;
+  } else if (status === "depth_exceeded") {
+    variant = "secondary";
+    label = "Scout-01 Depth Limit";
+  } else if (status === "queued_or_limited") {
+    variant = "outline";
+    label = "Scout-01 Rate Limited";
+  } else if (status === "failed" || status.startsWith("http_error_")) {
+    variant = "destructive";
+    label = `Scout-01 ${status}`;
+  } else {
+    variant = "outline";
+    label = `Scout-01 ${status}`;
+  }
+
+  return (
+    <Badge variant={variant} className="text-[10px] whitespace-nowrap">
+      {label}
+    </Badge>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/*  Crawl strategy helpers                                            */
+/* ------------------------------------------------------------------ */
+const CRAWL_STRATEGIES = [
+  { value: "crawl", label: "Deep", description: "Multi-page crawl" },
+  { value: "single_page", label: "Shallow", description: "Single page scrape" },
+] as const;
+
+const FREQUENCIES = [
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+] as const;
+
+const strategyLabel = (mode: string) => CRAWL_STRATEGIES.find((s) => s.value === mode)?.label ?? mode;
 
 /* ------------------------------------------------------------------ */
 /*  Subtype Select (reused in edit + bulk)                            */
@@ -91,6 +167,7 @@ const AdminSourceHubs = () => {
   const queryClient = useQueryClient();
   const { countries } = useCountries();
   const { providerTypes, subtypesFor } = useProviderLookups();
+  const { data: discoveryCounts } = useDiscoveryCounts();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
@@ -99,7 +176,7 @@ const AdminSourceHubs = () => {
 
   // Edit state
   const [editHub, setEditHub] = useState<Tables<"source_hubs"> | null>(null);
-  const [editForm, setEditForm] = useState({ provider_name: "", provider_type: "", provider_subtype: "", country: "", hub_url: "", is_active: true, crawl_mode: "crawl", crawl_depth_override: "", crawl_pages_override: "" });
+  const [editForm, setEditForm] = useState({ provider_name: "", provider_type: "", provider_subtype: "", country: "", hub_url: "", is_active: true, crawl_mode: "crawl", crawl_depth_override: "", crawl_pages_override: "", crawl_frequency: "daily" });
 
   // Bulk add state
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -129,6 +206,7 @@ const AdminSourceHubs = () => {
       toast.success(`Hub re-run complete: ${queued} URLs queued`);
       setRerunResult({ hubId, data: data ?? {} });
       queryClient.invalidateQueries({ queryKey: ["admin_source_hubs"] });
+      queryClient.invalidateQueries({ queryKey: ["hub_discovery_counts"] });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       toast.error(`Re-run failed: ${msg}`);
@@ -167,8 +245,17 @@ const AdminSourceHubs = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const updateFrequency = useMutation({
+    mutationFn: async ({ id, crawl_frequency }: { id: string; crawl_frequency: string }) => {
+      const { error } = await supabase.from("source_hubs").update({ crawl_frequency } as any).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin_source_hubs"] }); toast.success("Frequency updated"); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const updateHub = useMutation({
-    mutationFn: async (hub: { id: string; provider_name: string | null; provider_type: string | null; provider_subtype: string | null; country: string | null; hub_url: string; is_active: boolean; crawl_mode: string; crawl_depth_override: number | null; crawl_pages_override: number | null }) => {
+    mutationFn: async (hub: { id: string; provider_name: string | null; provider_type: string | null; provider_subtype: string | null; country: string | null; hub_url: string; is_active: boolean; crawl_mode: string; crawl_depth_override: number | null; crawl_pages_override: number | null; crawl_frequency: string }) => {
       const { error } = await supabase.from("source_hubs").update({
         provider_name: hub.provider_name || null,
         provider_type: hub.provider_type || null,
@@ -179,6 +266,7 @@ const AdminSourceHubs = () => {
         crawl_mode: hub.crawl_mode,
         crawl_depth_override: hub.crawl_depth_override,
         crawl_pages_override: hub.crawl_pages_override,
+        crawl_frequency: hub.crawl_frequency,
       } as any).eq("id", hub.id);
       if (error) throw error;
     },
@@ -198,6 +286,7 @@ const AdminSourceHubs = () => {
       crawl_mode: (hub as any).crawl_mode ?? "crawl",
       crawl_depth_override: (hub as any).crawl_depth_override?.toString() ?? "",
       crawl_pages_override: (hub as any).crawl_pages_override?.toString() ?? "",
+      crawl_frequency: (hub as any).crawl_frequency ?? "daily",
     });
   };
 
@@ -254,6 +343,7 @@ const AdminSourceHubs = () => {
       crawl_mode: editForm.crawl_mode,
       crawl_depth_override: editForm.crawl_depth_override ? parseInt(editForm.crawl_depth_override) : null,
       crawl_pages_override: editForm.crawl_pages_override ? parseInt(editForm.crawl_pages_override) : null,
+      crawl_frequency: editForm.crawl_frequency,
     });
   };
 
@@ -363,14 +453,14 @@ const AdminSourceHubs = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-xs">Type</TableHead>
-                <TableHead className="text-xs">Subtype</TableHead>
                 <TableHead className="text-xs">Provider</TableHead>
-                <TableHead className="text-xs">Country</TableHead>
                 <TableHead className="text-xs">URL</TableHead>
+                <TableHead className="text-xs">Strategy</TableHead>
+                <TableHead className="text-xs">Frequency</TableHead>
                 <TableHead className="text-xs">Active</TableHead>
+                <TableHead className="text-xs">Agent Status</TableHead>
+                <TableHead className="text-xs">Discovered</TableHead>
                 <TableHead className="text-xs">Last Crawled</TableHead>
-                <TableHead className="text-xs">Status</TableHead>
                 <TableHead className="text-xs">Error</TableHead>
                 <TableHead className="text-xs w-20">Actions</TableHead>
               </TableRow>
@@ -389,51 +479,76 @@ const AdminSourceHubs = () => {
                   <TableCell colSpan={10} className="text-center text-muted-foreground py-8">No hubs found</TableCell>
                 </TableRow>
               ) : (
-                hubsData?.hubs.map((hub) => (
-                  <TableRow key={hub.id}>
-                    <TableCell className="text-xs">{hub.provider_type ?? "—"}</TableCell>
-                    <TableCell className="text-xs">{(hub as any).provider_subtype ?? "—"}</TableCell>
-                    <TableCell className="text-xs font-medium">{hub.provider_name ?? "—"}</TableCell>
-                    <TableCell className="text-xs">{hub.country ?? "—"}</TableCell>
-                    <TableCell className="text-xs max-w-[200px] truncate">
-                      <a href={hub.hub_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
-                        {hub.hub_url.replace(/^https?:\/\//, "").slice(0, 40)}
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                      </a>
-                    </TableCell>
-                    <TableCell>
-                      <Switch checked={hub.is_active} onCheckedChange={(checked) => toggleActive.mutate({ id: hub.id, is_active: checked })} className="scale-75" />
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {hub.last_crawled_at ? new Date(hub.last_crawled_at).toLocaleDateString() : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {hub.status ? (
-                        <Badge variant={hub.status === "ok" ? "default" : "destructive"} className="text-[10px]">{hub.status}</Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs text-destructive max-w-[120px] truncate" title={hub.error ?? ""}>{hub.error ?? "—"}</TableCell>
-                    <TableCell className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEditOpen(hub)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      {isRerunnable(hub.status) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-primary"
-                          disabled={rerunningId === hub.id}
-                          onClick={() => rerunHub(hub.id)}
-                          title="Re-run this hub"
+                hubsData?.hubs.map((hub) => {
+                  const count = discoveryCounts?.[hub.id] ?? 0;
+                  return (
+                    <TableRow key={hub.id}>
+                      <TableCell className="text-xs">
+                        <div className="font-medium">{hub.provider_name ?? "—"}</div>
+                        <div className="text-muted-foreground">{hub.provider_type ?? ""}{(hub as any).provider_subtype ? ` / ${(hub as any).provider_subtype}` : ""}</div>
+                      </TableCell>
+                      <TableCell className="text-xs max-w-[180px] truncate">
+                        <a href={hub.hub_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                          {hub.hub_url.replace(/^https?:\/\//, "").slice(0, 35)}
+                          <ExternalLink className="h-3 w-3 shrink-0" />
+                        </a>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px]">
+                          {strategyLabel((hub as any).crawl_mode ?? "crawl")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={(hub as any).crawl_frequency ?? "daily"}
+                          onValueChange={(v) => updateFrequency.mutate({ id: hub.id, crawl_frequency: v })}
                         >
-                          <RotateCw className={`h-3.5 w-3.5 ${rerunningId === hub.id ? "animate-spin" : ""}`} />
+                          <SelectTrigger className="h-7 text-[10px] w-[90px] border-dashed">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {FREQUENCIES.map((f) => (
+                              <SelectItem key={f.value} value={f.value} className="text-xs">{f.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Switch checked={hub.is_active} onCheckedChange={(checked) => toggleActive.mutate({ id: hub.id, is_active: checked })} className="scale-75" />
+                      </TableCell>
+                      <TableCell>
+                        <AgentStatusBadge status={hub.status} lastCrawledAt={hub.last_crawled_at} />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-xs font-medium">
+                          <Link2 className="h-3 w-3 text-muted-foreground" />
+                          {count}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {hub.last_crawled_at ? new Date(hub.last_crawled_at).toLocaleDateString() : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-destructive max-w-[120px] truncate" title={hub.error ?? ""}>{hub.error ?? "—"}</TableCell>
+                      <TableCell className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEditOpen(hub)}>
+                          <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+                        {isRerunnable(hub.status) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-primary"
+                            disabled={rerunningId === hub.id}
+                            onClick={() => rerunHub(hub.id)}
+                            title="Re-run this hub"
+                          >
+                            <RotateCw className={`h-3.5 w-3.5 ${rerunningId === hub.id ? "animate-spin" : ""}`} />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -505,18 +620,32 @@ const AdminSourceHubs = () => {
               <Switch checked={editForm.is_active} onCheckedChange={(v) => setEditForm({ ...editForm, is_active: v })} />
               <Label className="text-xs">Active</Label>
             </div>
-            {/* Crawl Mode */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* Crawl Settings */}
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Crawl Mode</Label>
+                <Label className="text-xs">Crawl Strategy</Label>
                 <Select value={editForm.crawl_mode} onValueChange={(v) => setEditForm({ ...editForm, crawl_mode: v })}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="crawl">Crawl (multi-page)</SelectItem>
-                    <SelectItem value="single_page">Single Page (scrape)</SelectItem>
+                    {CRAWL_STRATEGIES.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>{s.label} — {s.description}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Check Frequency</Label>
+                <Select value={editForm.crawl_frequency} onValueChange={(v) => setEditForm({ ...editForm, crawl_frequency: v })}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {FREQUENCIES.map((f) => (
+                      <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Depth Override</Label>
                 <Input className="h-8 text-xs" type="number" min={0} placeholder="Default" value={editForm.crawl_depth_override} onChange={(e) => setEditForm({ ...editForm, crawl_depth_override: e.target.value })} />
