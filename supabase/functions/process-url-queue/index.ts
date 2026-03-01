@@ -23,9 +23,21 @@ const DEFAULTS = {
   backoff_minutes_max: 1440,
   firecrawl_format: "markdown",
   firecrawl_timeout_ms: 60000,
+  max_new_urls_from_list: 50,
+  same_domain_only: true,
+  ignore_query_urls: true,
 };
 
 type Settings = typeof DEFAULTS;
+
+const ALLOW_KEYWORDS = [
+  "scholarship", "scholarships", "grant", "grants", "award", "awards",
+  "fellowship", "fellowships", "funding", "bursary", "stipend", "apply", "application",
+];
+const EXCLUDE_KEYWORDS = [
+  "news", "blog", "events", "calendar", "press", "media", "about-us",
+  "contact", "privacy", "terms", "login", "signup", "careers", "jobs",
+];
 
 function loadSettings(row: Record<string, unknown> | null): Settings & { enabled: boolean } {
   if (!row) return { ...DEFAULTS, enabled: true };
@@ -44,6 +56,9 @@ function loadSettings(row: Record<string, unknown> | null): Settings & { enabled
     backoff_minutes_max: (s.backoff_minutes_max as number) ?? DEFAULTS.backoff_minutes_max,
     firecrawl_format: (s.firecrawl_format as string) ?? DEFAULTS.firecrawl_format,
     firecrawl_timeout_ms: (s.firecrawl_timeout_ms as number) ?? DEFAULTS.firecrawl_timeout_ms,
+    max_new_urls_from_list: (s.max_new_urls_from_list as number) ?? DEFAULTS.max_new_urls_from_list,
+    same_domain_only: (s.same_domain_only as boolean) ?? DEFAULTS.same_domain_only,
+    ignore_query_urls: (s.ignore_query_urls as boolean) ?? DEFAULTS.ignore_query_urls,
   };
 }
 
@@ -59,21 +74,20 @@ async function hashContent(text: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// ── URL Normalization ──
+
 type NormalizeResult = { valid: true; url: string } | { valid: false; reason: string };
 
 function normalizeUrl(raw: string): NormalizeResult {
   let s = raw.trim();
   if (!s) return { valid: false, reason: "empty_url" };
 
-  // Reject non-http schemes
   const lc = s.toLowerCase();
   if (lc.startsWith("mailto:") || lc.startsWith("tel:") || lc.startsWith("javascript:") || lc.startsWith("data:") || lc.startsWith("ftp:")) {
     return { valid: false, reason: `rejected_scheme: ${lc.split(":")[0]}` };
   }
 
-  // Protocol-relative
   if (s.startsWith("//")) s = "https:" + s;
-  // Missing scheme but looks like a domain
   else if (!s.startsWith("http://") && !s.startsWith("https://")) {
     if (s.startsWith("www.") || s.includes(".")) {
       s = "https://" + s;
@@ -90,6 +104,22 @@ function normalizeUrl(raw: string): NormalizeResult {
     return { valid: false, reason: `url_parse_failed: ${s.slice(0, 200)}` };
   }
 }
+
+function getDomain(url: string): string {
+  try { return new URL(url).hostname; } catch { return ""; }
+}
+
+function hasAllowKeyword(url: string): boolean {
+  const lc = url.toLowerCase();
+  return ALLOW_KEYWORDS.some((k) => lc.includes(k));
+}
+
+function hasExcludeKeyword(url: string): boolean {
+  const lc = url.toLowerCase();
+  return EXCLUDE_KEYWORDS.some((k) => lc.includes(k));
+}
+
+// ── LLM Helpers ──
 
 async function callLLM(apiKey: string, messages: Array<{ role: string; content: string }>, tools?: unknown[], toolChoice?: unknown): Promise<unknown> {
   const body: Record<string, unknown> = {
@@ -115,20 +145,24 @@ async function callLLM(apiKey: string, messages: Array<{ role: string; content: 
   return await res.json();
 }
 
-async function classifyPage(apiKey: string, content: string): Promise<{ is_scholarship: boolean; confidence: number; reason: string }> {
+async function classifyPage(apiKey: string, content: string): Promise<{ page_type: "detail" | "list" | "not_relevant"; confidence: number; reason: string }> {
   const tools = [{
     type: "function",
     function: {
       name: "classify_page",
-      description: "Classify whether this page describes a specific scholarship opportunity.",
+      description: "Classify a web page into one of three types.",
       parameters: {
         type: "object",
         properties: {
-          is_scholarship: { type: "boolean", description: "True if the page describes a specific scholarship, fellowship, grant, or bursary opportunity with details. False for index pages, general financial aid info, news articles, or institutional pages." },
+          page_type: {
+            type: "string",
+            enum: ["detail", "list", "not_relevant"],
+            description: "detail = describes ONE specific scholarship/fellowship/grant/bursary with eligibility and (deadline OR amount OR application instructions). list = a directory/index page listing multiple scholarships or categories, often with many links. not_relevant = news, events, general financial aid policy, unrelated content.",
+          },
           confidence: { type: "number", description: "Confidence 0-1" },
           reason: { type: "string", description: "Brief reason for classification" },
         },
-        required: ["is_scholarship", "confidence", "reason"],
+        required: ["page_type", "confidence", "reason"],
         additionalProperties: false,
       },
     },
@@ -136,7 +170,15 @@ async function classifyPage(apiKey: string, content: string): Promise<{ is_schol
 
   const truncated = content.slice(0, 8000);
   const result = await callLLM(apiKey, [
-    { role: "system", content: "You classify web pages. Determine if this page describes a specific scholarship, fellowship, grant, or bursary opportunity. Index/listing pages with multiple scholarships should be classified as NOT a specific scholarship." },
+    {
+      role: "system",
+      content: `You classify web pages about scholarships. Determine the page type:
+- "detail": The page describes ONE specific scholarship, fellowship, grant, or bursary opportunity. It has eligibility details AND at least one of: deadline, amount, or application instructions.
+- "list": The page is a directory, index, or listing page showing multiple scholarships, categories, or links to individual scholarships. It may have tables, lists, or many outbound links.
+- "not_relevant": The page is about news, events, general financial aid policy, campus life, or other unrelated content.
+
+Be strict: a "detail" page must clearly describe a single specific opportunity. If in doubt between detail and list, prefer list. If in doubt between list and not_relevant, prefer not_relevant.`,
+    },
     { role: "user", content: truncated },
   ], tools, { type: "function", function: { name: "classify_page" } });
 
@@ -145,9 +187,9 @@ async function classifyPage(apiKey: string, content: string): Promise<{ is_schol
     if (msg.tool_calls?.[0]) {
       return JSON.parse(msg.tool_calls[0].function.arguments);
     }
-    return { is_scholarship: false, confidence: 0, reason: "No tool call returned" };
+    return { page_type: "not_relevant", confidence: 0, reason: "No tool call returned" };
   } catch {
-    return { is_scholarship: false, confidence: 0, reason: "Failed to parse classification" };
+    return { page_type: "not_relevant", confidence: 0, reason: "Failed to parse classification" };
   }
 }
 
@@ -201,6 +243,80 @@ async function extractScholarship(apiKey: string, content: string, sourceUrl: st
     throw new Error(`Extraction parse error: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
+
+// ── Link Extraction from Content ──
+
+function extractLinksFromContent(content: string, firecrawlLinks: string[] | null): string[] {
+  const links = new Set<string>();
+
+  // Prefer Firecrawl-provided links
+  if (firecrawlLinks && Array.isArray(firecrawlLinks)) {
+    for (const link of firecrawlLinks) {
+      if (typeof link === "string") links.add(link);
+    }
+  }
+
+  // Also parse markdown links [text](url)
+  const mdLinkRegex = /\[([^\]]*)\]\(([^)]+)\)/g;
+  let match;
+  while ((match = mdLinkRegex.exec(content)) !== null) {
+    links.add(match[2]);
+  }
+
+  // Parse bare http(s) URLs
+  const urlRegex = /https?:\/\/[^\s"'<>\])+,]+/gi;
+  while ((match = urlRegex.exec(content)) !== null) {
+    links.add(match[0]);
+  }
+
+  return Array.from(links);
+}
+
+function filterCandidateLinks(
+  links: string[],
+  sourceDomain: string,
+  cfg: Settings,
+): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const raw of links) {
+    const normalized = normalizeUrl(raw);
+    if (!normalized.valid) continue;
+
+    const url = normalized.url;
+
+    // Dedupe
+    if (seen.has(url)) continue;
+    seen.add(url);
+
+    // Same domain check
+    if (cfg.same_domain_only) {
+      const linkDomain = getDomain(url);
+      if (linkDomain !== sourceDomain && !linkDomain.endsWith("." + sourceDomain)) continue;
+    }
+
+    // Strip query params if configured
+    if (cfg.ignore_query_urls) {
+      try {
+        const u = new URL(url);
+        if (u.search) continue;
+      } catch { continue; }
+    }
+
+    // Exclude keywords
+    if (hasExcludeKeyword(url)) continue;
+
+    // Must have at least one allow keyword in the URL or path
+    if (!hasAllowKeyword(url)) continue;
+
+    result.push(url);
+  }
+
+  return result;
+}
+
+// ── Main Handler ──
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -282,12 +398,13 @@ Deno.serve(async (req) => {
 
     if (!rows || rows.length === 0) {
       await releaseLock();
-      return json({ skipped: false, selected: 0, processed: 0, inserted_or_updated: 0, ignored_not_scholarship: 0, failed: 0, retried: 0, runtime_ms: Date.now() - start });
+      return json({ skipped: false, selected: 0, processed: 0, inserted_or_updated: 0, list_pages_handled: 0, new_urls_queued_from_lists: 0, ignored_not_relevant: 0, invalid_url_skipped: 0, failed: 0, retried: 0, runtime_ms: Date.now() - start });
     }
 
     // Counters
-    let processed = 0, insertedOrUpdated = 0, ignoredNotScholarship = 0, failed = 0, retried = 0;
+    let processed = 0, insertedOrUpdated = 0, failed = 0, retried = 0;
     let invalidUrlSkipped = 0, invalidUrlFirecrawlSkipped = 0;
+    let listPagesHandled = 0, newUrlsQueuedFromLists = 0, ignoredNotRelevant = 0;
     let lastError: string | null = null;
 
     for (const row of rows) {
@@ -342,7 +459,7 @@ Deno.serve(async (req) => {
 
         const scrapeData = await scrapeRes.json();
         if (!scrapeRes.ok) {
-          // Firecrawl 400 with invalid URL = permanent failure, no retry
+          // Firecrawl 400 = permanent failure
           if (scrapeRes.status === 400) {
             const firecrawlErr = JSON.stringify(scrapeData).slice(0, 300);
             const errMsg = `invalid_url_firecrawl: ${normalizedUrl} — ${firecrawlErr}`;
@@ -362,6 +479,7 @@ Deno.serve(async (req) => {
 
         const data = scrapeData.data ?? scrapeData;
         const content = data.markdown || data.html || "";
+        const firecrawlLinks: string[] | null = data.links || null;
         const finalUrl = data.metadata?.sourceURL || normalizedUrl;
 
         // ── Content length check ──
@@ -369,23 +487,93 @@ Deno.serve(async (req) => {
           throw new Error("content_too_short");
         }
 
-        // ── Classifier step ──
+        // ── Classifier step (3-way) ──
         if (cfg.use_classifier) {
           console.log(`Classifying: ${normalizedUrl}`);
           const classification = await classifyPage(lovableKey, content);
 
-          if (!classification.is_scholarship || classification.confidence < cfg.classifier_min_confidence) {
+          if (classification.confidence < cfg.classifier_min_confidence) {
+            classification.page_type = "not_relevant";
+          }
+
+          // ── NOT RELEVANT ──
+          if (classification.page_type === "not_relevant") {
             await supabase.from("url_queue").update({
-              status: "failed",
-              last_error: `not_a_scholarship_page: ${classification.reason}`,
+              status: "done",
+              last_error: `not_relevant: ${classification.reason}`,
+              processed_at: new Date().toISOString(),
+              attempts: attempts + 1,
+            }).eq("id", rowId);
+            ignoredNotRelevant++;
+            processed++;
+            continue;
+          }
+
+          // ── LIST PAGE ──
+          if (classification.page_type === "list") {
+            console.log(`List page detected: ${normalizedUrl}`);
+            const sourceDomain = getDomain(finalUrl);
+            const allLinks = extractLinksFromContent(content, firecrawlLinks);
+            const candidateLinks = filterCandidateLinks(allLinks, sourceDomain, cfg);
+
+            // Dedupe against existing url_queue and scholarships
+            let linksToInsert: string[] = [];
+            if (candidateLinks.length > 0) {
+              // Check existing queue URLs
+              const { data: existingQueue } = await supabase
+                .from("url_queue")
+                .select("url")
+                .in("url", candidateLinks.slice(0, 200));
+              const existingQueueUrls = new Set((existingQueue || []).map((r: any) => r.url));
+
+              // Check existing scholarships
+              const { data: existingScholarships } = await supabase
+                .from("scholarships")
+                .select("source_url")
+                .in("source_url", candidateLinks.slice(0, 200));
+              const existingScholarshipUrls = new Set((existingScholarships || []).map((r: any) => r.source_url));
+
+              linksToInsert = candidateLinks
+                .filter((u) => !existingQueueUrls.has(u) && !existingScholarshipUrls.has(u))
+                .slice(0, cfg.max_new_urls_from_list);
+            }
+
+            // Insert new URLs
+            if (linksToInsert.length > 0) {
+              const newRows = linksToInsert.map((linkUrl) => ({
+                url: linkUrl,
+                status: "pending",
+                provider_name: (row.provider_name as string) || null,
+                provider_type: (row.provider_type as string) || null,
+                provider_subtype: (row.provider_subtype as string) || null,
+                discovered_from: (row.discovered_from as string) || null,
+              }));
+
+              const { error: insertErr } = await supabase
+                .from("url_queue")
+                .insert(newRows);
+
+              if (insertErr) {
+                console.error(`Failed to insert list URLs: ${insertErr.message}`);
+              } else {
+                newUrlsQueuedFromLists += linksToInsert.length;
+              }
+            }
+
+            await supabase.from("url_queue").update({
+              status: "done",
+              last_error: `handled_as_list: queued ${linksToInsert.length} urls (found ${candidateLinks.length} candidates from ${allLinks.length} total links)`,
               processed_at: new Date().toISOString(),
               attempts: attempts + 1,
             }).eq("id", rowId);
 
-            ignoredNotScholarship++;
+            listPagesHandled++;
             processed++;
+            console.log(`List page handled: queued ${linksToInsert.length} new URLs`);
             continue;
           }
+
+          // ── DETAIL PAGE (page_type === "detail") — fall through to extraction ──
         }
 
         // ── Extraction step ──
@@ -432,7 +620,6 @@ Deno.serve(async (req) => {
           .upsert(scholarship as any, { onConflict: "source_url" });
 
         if (upsertErr) {
-          // If conflict resolution fails (no unique constraint on source_url), try insert
           if (upsertErr.message.includes("unique") || upsertErr.message.includes("constraint")) {
             const { error: updateErr } = await supabase
               .from("scholarships")
@@ -440,7 +627,6 @@ Deno.serve(async (req) => {
               .eq("source_url", finalUrl);
             if (updateErr) throw new Error(`Upsert failed: ${updateErr.message}`);
           } else {
-            // Just insert without conflict
             const { error: insertErr } = await supabase
               .from("scholarships")
               .insert(scholarship as any);
@@ -495,7 +681,9 @@ Deno.serve(async (req) => {
       selected: rows.length,
       processed,
       inserted_or_updated: insertedOrUpdated,
-      ignored_not_scholarship: ignoredNotScholarship,
+      list_pages_handled: listPagesHandled,
+      new_urls_queued_from_lists: newUrlsQueuedFromLists,
+      ignored_not_relevant: ignoredNotRelevant,
       invalid_url_skipped: invalidUrlSkipped,
       invalid_url_firecrawl_skipped: invalidUrlFirecrawlSkipped,
       failed,
