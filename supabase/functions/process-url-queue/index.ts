@@ -74,19 +74,15 @@ async function hashContent(text: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// ── URL Normalization ──
-
 type NormalizeResult = { valid: true; url: string } | { valid: false; reason: string };
 
 function normalizeUrl(raw: string): NormalizeResult {
   let s = raw.trim();
   if (!s) return { valid: false, reason: "empty_url" };
-
   const lc = s.toLowerCase();
   if (lc.startsWith("mailto:") || lc.startsWith("tel:") || lc.startsWith("javascript:") || lc.startsWith("data:") || lc.startsWith("ftp:")) {
     return { valid: false, reason: `rejected_scheme: ${lc.split(":")[0]}` };
   }
-
   if (s.startsWith("//")) s = "https:" + s;
   else if (!s.startsWith("http://") && !s.startsWith("https://")) {
     if (s.startsWith("www.") || s.includes(".")) {
@@ -95,7 +91,6 @@ function normalizeUrl(raw: string): NormalizeResult {
       return { valid: false, reason: "no_valid_scheme_or_domain" };
     }
   }
-
   try {
     const u = new URL(s);
     u.hash = "";
@@ -119,8 +114,6 @@ function hasExcludeKeyword(url: string): boolean {
   return EXCLUDE_KEYWORDS.some((k) => lc.includes(k));
 }
 
-// ── LLM Helpers ──
-
 async function callLLM(apiKey: string, messages: Array<{ role: string; content: string }>, tools?: unknown[], toolChoice?: unknown): Promise<unknown> {
   const body: Record<string, unknown> = {
     model: "google/gemini-2.5-flash",
@@ -128,7 +121,6 @@ async function callLLM(apiKey: string, messages: Array<{ role: string; content: 
   };
   if (tools) body.tools = tools;
   if (toolChoice) body.tool_choice = toolChoice;
-
   const res = await fetch(AI_GATEWAY, {
     method: "POST",
     headers: {
@@ -137,7 +129,6 @@ async function callLLM(apiKey: string, messages: Array<{ role: string; content: 
     },
     body: JSON.stringify(body),
   });
-
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(`LLM error (${res.status}): ${errText.slice(0, 500)}`);
@@ -167,7 +158,6 @@ async function classifyPage(apiKey: string, content: string): Promise<{ page_typ
       },
     },
   }];
-
   const truncated = content.slice(0, 8000);
   const result = await callLLM(apiKey, [
     {
@@ -181,7 +171,6 @@ Be strict: a "detail" page must clearly describe a single specific opportunity. 
     },
     { role: "user", content: truncated },
   ], tools, { type: "function", function: { name: "classify_page" } });
-
   try {
     const msg = (result as any).choices[0].message;
     if (msg.tool_calls?.[0]) {
@@ -226,13 +215,11 @@ async function extractScholarship(apiKey: string, content: string, sourceUrl: st
       },
     },
   }];
-
   const truncated = content.slice(0, 12000);
   const result = await callLLM(apiKey, [
     { role: "system", content: `You extract structured scholarship data from web pages. The source URL is: ${sourceUrl}. Extract all available fields accurately. If a field is not found, omit it. Be conservative with confidence_score.` },
     { role: "user", content: truncated },
   ], tools, { type: "function", function: { name: "extract_scholarship" } });
-
   try {
     const msg = (result as any).choices[0].message;
     if (msg.tool_calls?.[0]) {
@@ -244,31 +231,22 @@ async function extractScholarship(apiKey: string, content: string, sourceUrl: st
   }
 }
 
-// ── Link Extraction from Content ──
-
 function extractLinksFromContent(content: string, firecrawlLinks: string[] | null): string[] {
   const links = new Set<string>();
-
-  // Prefer Firecrawl-provided links
   if (firecrawlLinks && Array.isArray(firecrawlLinks)) {
     for (const link of firecrawlLinks) {
       if (typeof link === "string") links.add(link);
     }
   }
-
-  // Also parse markdown links [text](url)
   const mdLinkRegex = /\[([^\]]*)\]\(([^)]+)\)/g;
   let match;
   while ((match = mdLinkRegex.exec(content)) !== null) {
     links.add(match[2]);
   }
-
-  // Parse bare http(s) URLs
-  const urlRegex = /https?:\/\/[^\s"'<>\])+,]+/gi;
+  const urlRegex = /https?:\/\/[^\s"'<>`]+[^,.]/gi;
   while ((match = urlRegex.exec(content)) !== null) {
     links.add(match[0]);
   }
-
   return Array.from(links);
 }
 
@@ -279,40 +257,26 @@ function filterCandidateLinks(
 ): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
-
   for (const raw of links) {
     const normalized = normalizeUrl(raw);
     if (!normalized.valid) continue;
-
     const url = normalized.url;
-
-    // Dedupe
     if (seen.has(url)) continue;
     seen.add(url);
-
-    // Same domain check
     if (cfg.same_domain_only) {
       const linkDomain = getDomain(url);
       if (linkDomain !== sourceDomain && !linkDomain.endsWith("." + sourceDomain)) continue;
     }
-
-    // Strip query params if configured
     if (cfg.ignore_query_urls) {
       try {
         const u = new URL(url);
         if (u.search) continue;
       } catch { continue; }
     }
-
-    // Exclude keywords
     if (hasExcludeKeyword(url)) continue;
-
-    // Must have at least one allow keyword in the URL or path
     if (!hasAllowKeyword(url)) continue;
-
     result.push(url);
   }
-
   return result;
 }
 
@@ -330,6 +294,7 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const batchSizeOverride = url.searchParams.get("batch_size");
   const force = url.searchParams.get("force") === "true";
+  const isManual = url.searchParams.get("manual") === "true";
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -341,6 +306,39 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+  // ── Create run log entry ──
+  let runLogId: string | null = null;
+  try {
+    const { data: logRow } = await supabase
+      .from("agent_run_logs")
+      .insert({
+        agent_name: JOB_NAME,
+        run_type: isManual ? "manual" : "scheduled",
+        status: "running",
+        started_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    runLogId = logRow?.id ?? null;
+  } catch (e) {
+    console.error("Failed to create run log:", e);
+  }
+
+  const finalizeLog = async (status: string, summary: Record<string, unknown>, errorMsg?: string) => {
+    if (!runLogId) return;
+    try {
+      await supabase.from("agent_run_logs").update({
+        status,
+        summary,
+        finished_at: new Date().toISOString(),
+        duration_ms: Date.now() - start,
+        error: errorMsg || null,
+      }).eq("id", runLogId);
+    } catch (e) {
+      console.error("Failed to update run log:", e);
+    }
+  };
+
   // ── Load settings ──
   const { data: agentRow } = await supabase
     .from("agent_settings")
@@ -349,7 +347,11 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   const cfg = loadSettings(agentRow);
-  if (!cfg.enabled) return json({ skipped: true, reason: "disabled", runtime_ms: Date.now() - start });
+  if (!cfg.enabled) {
+    const result = { skipped: true, reason: "disabled", runtime_ms: Date.now() - start };
+    await finalizeLog("skipped", result);
+    return json(result);
+  }
 
   const batchSize = batchSizeOverride ? parseInt(batchSizeOverride, 10) : cfg.batch_size;
 
@@ -361,8 +363,10 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   const now = new Date();
-  if (lockRow && new Date(lockRow.locked_until) > now) {
-    return json({ skipped: true, reason: "locked", locked_until: lockRow.locked_until, runtime_ms: Date.now() - start });
+  if (lockRow && new Date(lockRow.locked_until) > now && !force) {
+    const result = { skipped: true, reason: "locked", locked_until: lockRow.locked_until, runtime_ms: Date.now() - start };
+    await finalizeLog("skipped", result);
+    return json(result);
   }
 
   const lockUntil = new Date(now.getTime() + cfg.lock_minutes * 60 * 1000).toISOString();
@@ -393,18 +397,23 @@ Deno.serve(async (req) => {
     const { data: rows, error: selectErr } = await query;
     if (selectErr) {
       await releaseLock();
-      return json({ success: false, error: selectErr.message }, 500);
+      const result = { success: false, error: selectErr.message };
+      await finalizeLog("error", result, selectErr.message);
+      return json(result, 500);
     }
 
     if (!rows || rows.length === 0) {
       await releaseLock();
-      return json({ skipped: false, selected: 0, processed: 0, inserted_or_updated: 0, list_pages_handled: 0, new_urls_queued_from_lists: 0, ignored_not_relevant: 0, invalid_url_skipped: 0, failed: 0, retried: 0, runtime_ms: Date.now() - start });
+      const result = { skipped: false, selected: 0, processed: 0, inserted_or_updated: 0, list_pages_handled: 0, new_urls_queued_from_lists: 0, ignored_not_relevant: 0, invalid_url_skipped: 0, failed: 0, retried: 0, runtime_ms: Date.now() - start };
+      await finalizeLog("success", result);
+      return json(result);
     }
 
     // Counters
     let processed = 0, insertedOrUpdated = 0, failed = 0, retried = 0;
     let invalidUrlSkipped = 0, invalidUrlFirecrawlSkipped = 0;
     let listPagesHandled = 0, newUrlsQueuedFromLists = 0, ignoredNotRelevant = 0;
+    let contentTooShortCount = 0;
     let lastError: string | null = null;
 
     for (const row of rows) {
@@ -412,7 +421,6 @@ Deno.serve(async (req) => {
       const rawUrl = row.url as string;
       const attempts = (row.attempts as number) ?? 0;
 
-      // Mark processing atomically
       const { error: lockErr } = await supabase
         .from("url_queue")
         .update({ status: "processing" })
@@ -426,7 +434,6 @@ Deno.serve(async (req) => {
 
       const normalized = normalizeUrl(rawUrl);
 
-      // ── Invalid URL check ──
       if (!normalized.valid) {
         const errMsg = `invalid_url: ${normalized.reason} (raw: ${rawUrl.slice(0, 200)})`;
         console.warn(`Skipping invalid URL ${rowId}: ${errMsg}`);
@@ -444,7 +451,6 @@ Deno.serve(async (req) => {
       const normalizedUrl = normalized.url;
 
       try {
-        // ── Scrape with Firecrawl ──
         console.log(`Scraping: ${normalizedUrl}`);
         const scrapeRes = await fetch(`${FIRECRAWL_API}/scrape`, {
           method: "POST",
@@ -459,7 +465,6 @@ Deno.serve(async (req) => {
 
         const scrapeData = await scrapeRes.json();
         if (!scrapeRes.ok) {
-          // Firecrawl 400 = permanent failure
           if (scrapeRes.status === 400) {
             const firecrawlErr = JSON.stringify(scrapeData).slice(0, 300);
             const errMsg = `invalid_url_firecrawl: ${normalizedUrl} — ${firecrawlErr}`;
@@ -482,12 +487,11 @@ Deno.serve(async (req) => {
         const firecrawlLinks: string[] | null = data.links || null;
         const finalUrl = data.metadata?.sourceURL || normalizedUrl;
 
-        // ── Content length check ──
         if (content.length < cfg.min_text_length) {
+          contentTooShortCount++;
           throw new Error("content_too_short");
         }
 
-        // ── Classifier step (3-way) ──
         if (cfg.use_classifier) {
           console.log(`Classifying: ${normalizedUrl}`);
           const classification = await classifyPage(lovableKey, content);
@@ -496,7 +500,6 @@ Deno.serve(async (req) => {
             classification.page_type = "not_relevant";
           }
 
-          // ── NOT RELEVANT ──
           if (classification.page_type === "not_relevant") {
             await supabase.from("url_queue").update({
               status: "done",
@@ -509,24 +512,20 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          // ── LIST PAGE ──
           if (classification.page_type === "list") {
             console.log(`List page detected: ${normalizedUrl}`);
             const sourceDomain = getDomain(finalUrl);
             const allLinks = extractLinksFromContent(content, firecrawlLinks);
             const candidateLinks = filterCandidateLinks(allLinks, sourceDomain, cfg);
 
-            // Dedupe against existing url_queue and scholarships
             let linksToInsert: string[] = [];
             if (candidateLinks.length > 0) {
-              // Check existing queue URLs
               const { data: existingQueue } = await supabase
                 .from("url_queue")
                 .select("url")
                 .in("url", candidateLinks.slice(0, 200));
               const existingQueueUrls = new Set((existingQueue || []).map((r: any) => r.url));
 
-              // Check existing scholarships
               const { data: existingScholarships } = await supabase
                 .from("scholarships")
                 .select("source_url")
@@ -538,7 +537,6 @@ Deno.serve(async (req) => {
                 .slice(0, cfg.max_new_urls_from_list);
             }
 
-            // Insert new URLs
             if (linksToInsert.length > 0) {
               const newRows = linksToInsert.map((linkUrl) => ({
                 url: linkUrl,
@@ -572,11 +570,8 @@ Deno.serve(async (req) => {
             console.log(`List page handled: queued ${linksToInsert.length} new URLs`);
             continue;
           }
-
-          // ── DETAIL PAGE (page_type === "detail") — fall through to extraction ──
         }
 
-        // ── Extraction step ──
         console.log(`Extracting: ${normalizedUrl}`);
         const extracted = await extractScholarship(lovableKey, content, finalUrl);
 
@@ -588,7 +583,6 @@ Deno.serve(async (req) => {
           throw new Error(`extraction_low_confidence: ${extracted.confidence_score}`);
         }
 
-        // ── Build scholarship record ──
         const contentHash = await hashContent(content);
         const providerType = (extracted.provider_type as string) || (row.provider_type as string) || "University";
         let providerSubtype = (extracted.provider_subtype as string) || (row.provider_subtype as string) || null;
@@ -614,7 +608,6 @@ Deno.serve(async (req) => {
           confidence_score: (extracted.confidence_score as number) || null,
         };
 
-        // ── Upsert ──
         const { error: upsertErr } = await supabase
           .from("scholarships")
           .upsert(scholarship as any, { onConflict: "source_url" });
@@ -634,7 +627,6 @@ Deno.serve(async (req) => {
           }
         }
 
-        // ── Mark done ──
         await supabase.from("url_queue").update({
           status: "done",
           processed_at: new Date().toISOString(),
@@ -676,7 +668,7 @@ Deno.serve(async (req) => {
 
     await releaseLock();
 
-    return json({
+    const result = {
       skipped: false,
       selected: rows.length,
       processed,
@@ -684,18 +676,24 @@ Deno.serve(async (req) => {
       list_pages_handled: listPagesHandled,
       new_urls_queued_from_lists: newUrlsQueuedFromLists,
       ignored_not_relevant: ignoredNotRelevant,
+      content_too_short_count: contentTooShortCount,
       invalid_url_skipped: invalidUrlSkipped,
       invalid_url_firecrawl_skipped: invalidUrlFirecrawlSkipped,
       failed,
       retried,
       last_error: lastError,
       runtime_ms: Date.now() - start,
-    });
+    };
+
+    await finalizeLog("success", result);
+    return json(result);
 
   } catch (e) {
     await releaseLock();
     const errMsg = e instanceof Error ? e.message : String(e);
     console.error("process-url-queue fatal error:", errMsg);
-    return json({ success: false, error: errMsg, runtime_ms: Date.now() - start }, 500);
+    const result = { success: false, error: errMsg, runtime_ms: Date.now() - start };
+    await finalizeLog("error", result, errMsg);
+    return json(result, 500);
   }
 });

@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_run_logs: {
+        Row: {
+          agent_name: string
+          duration_ms: number | null
+          error: string | null
+          finished_at: string | null
+          id: string
+          run_type: string
+          started_at: string
+          status: string
+          summary: Json | null
+        }
+        Insert: {
+          agent_name: string
+          duration_ms?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          run_type?: string
+          started_at?: string
+          status?: string
+          summary?: Json | null
+        }
+        Update: {
+          agent_name?: string
+          duration_ms?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          run_type?: string
+          started_at?: string
+          status?: string
+          summary?: Json | null
+        }
+        Relationships: []
+      }
       agent_settings: {
         Row: {
           agent_name: string
