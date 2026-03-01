@@ -22,8 +22,8 @@ const stats = [
 
 const steps = [
   { title: "Build Your Profile", desc: "Education level, country of origin, target destinations—we just need 3 minutes of your time.", step: "01" },
-  { title: "Our Automated Technology Matches You", desc: "We scan thousands of funds daily, scoring each one against your unique academic fingerprint.", step: "02" },
-  { title: "Go Directly to Scholarship Page and Apply", desc: "We redirect you to apply on the Scholarship or Grant page and take note of your application.", step: "03" },
+  { title: "Technology Matches You", desc: "We scan thousands of funds daily, scoring each one against your unique academic fingerprint.", step: "02" },
+  { title: "Apply and Track", desc: "We redirect you to apply on the Scholarship or Grant page and take note of your application.", step: "03" },
 ];
 
 const Index = () => {
@@ -85,7 +85,7 @@ const Index = () => {
       <section className="container py-24">
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-4xl font-bold text-foreground">Three Steps. Zero Guesswork.</h2>
-          <p className="text-muted-foreground mt-3 max-w-xl mx-auto">ScholarFlow's AI does the heavy lifting so you can focus on what matters—your education.</p>
+          <p className="text-muted-foreground mt-3 max-w-xl mx-auto">We do the heavy lifting so you can focus on what matters—your education.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {steps.map((f) => (
