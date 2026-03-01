@@ -99,6 +99,11 @@ const Navbar = ({
               <Button variant="ghost" size="sm" className="text-sm font-medium" onClick={() => navigate('/profile')}>
                 Profile
               </Button>
+              {role === 'admin' && (
+                <Button variant="ghost" size="sm" className="text-sm font-medium" onClick={() => navigate('/admin')}>
+                  Admin
+                </Button>
+              )}
               <Button variant="outline" size="sm" className="ml-1 text-sm rounded-full" onClick={signOut}>
                 Sign Out
               </Button>
