@@ -48,7 +48,7 @@ const Index = () => {
           </div>
 
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-foreground max-w-4xl leading-[1.1] animate-fade-in opacity-0">
-            The World's Scholarships,{" "}
+            The World's Scholarships and Grants,{" "}
             <span className="text-gradient-gold">Matched to You.</span>
           </h1>
 
