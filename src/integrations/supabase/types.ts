@@ -184,6 +184,33 @@ export type Database = {
         }
         Relationships: []
       }
+      providers: {
+        Row: {
+          country: string | null
+          created_at: string
+          id: string
+          name: string
+          provider_type: string | null
+          website: string | null
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          provider_type?: string | null
+          website?: string | null
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          provider_type?: string | null
+          website?: string | null
+        }
+        Relationships: []
+      }
       saved_scholarships: {
         Row: {
           created_at: string
@@ -276,7 +303,7 @@ export type Database = {
             foreignKeyName: "scholarships_provider_id_fkey"
             columns: ["provider_id"]
             isOneToOne: false
-            referencedRelation: "profiles"
+            referencedRelation: "providers"
             referencedColumns: ["id"]
           },
         ]
