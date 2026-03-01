@@ -492,6 +492,7 @@ export type Database = {
           discovered_from: string | null
           id: string
           last_error: string | null
+          next_run_at: string | null
           processed_at: string | null
           provider_name: string | null
           provider_subtype: string | null
@@ -505,6 +506,7 @@ export type Database = {
           discovered_from?: string | null
           id?: string
           last_error?: string | null
+          next_run_at?: string | null
           processed_at?: string | null
           provider_name?: string | null
           provider_subtype?: string | null
@@ -518,6 +520,7 @@ export type Database = {
           discovered_from?: string | null
           id?: string
           last_error?: string | null
+          next_run_at?: string | null
           processed_at?: string | null
           provider_name?: string | null
           provider_subtype?: string | null

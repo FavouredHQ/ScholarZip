@@ -2,13 +2,14 @@ import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { Database, Globe, Zap, Settings2, ArrowLeft } from "lucide-react";
+import { Database, Globe, Zap, Settings2, ArrowLeft, FileText } from "lucide-react";
 
 const navItems = [
   { to: "/admin/hubs", label: "Source Hubs", icon: Globe },
   { to: "/admin/queue", label: "URL Queue", icon: Database },
   { to: "/admin/jobs", label: "Jobs", icon: Zap },
   { to: "/admin/discovery", label: "Agent 1", icon: Settings2 },
+  { to: "/admin/extraction", label: "Agent 2", icon: FileText },
 ];
 
 const AdminLayout = ({ children }: { children: ReactNode }) => {
