@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_settings: {
+        Row: {
+          agent_name: string
+          enabled: boolean
+          settings: Json
+          updated_at: string
+        }
+        Insert: {
+          agent_name: string
+          enabled?: boolean
+          settings?: Json
+          updated_at?: string
+        }
+        Update: {
+          agent_name?: string
+          enabled?: boolean
+          settings?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       applications: {
         Row: {
           created_at: string | null
@@ -394,6 +415,7 @@ export type Database = {
       }
       source_hubs: {
         Row: {
+          consecutive_failures: number
           country: string | null
           created_at: string
           error: string | null
@@ -401,12 +423,14 @@ export type Database = {
           id: string
           is_active: boolean
           last_crawled_at: string | null
+          next_crawl_at: string | null
           provider_name: string | null
           provider_subtype: string | null
           provider_type: string | null
           status: string | null
         }
         Insert: {
+          consecutive_failures?: number
           country?: string | null
           created_at?: string
           error?: string | null
@@ -414,12 +438,14 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_crawled_at?: string | null
+          next_crawl_at?: string | null
           provider_name?: string | null
           provider_subtype?: string | null
           provider_type?: string | null
           status?: string | null
         }
         Update: {
+          consecutive_failures?: number
           country?: string | null
           created_at?: string
           error?: string | null
@@ -427,6 +453,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_crawled_at?: string | null
+          next_crawl_at?: string | null
           provider_name?: string | null
           provider_subtype?: string | null
           provider_type?: string | null
