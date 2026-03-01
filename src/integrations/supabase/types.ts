@@ -281,6 +281,92 @@ export type Database = {
           },
         ]
       }
+      source_hubs: {
+        Row: {
+          country: string | null
+          created_at: string
+          error: string | null
+          hub_url: string
+          id: string
+          is_active: boolean
+          last_crawled_at: string | null
+          provider_name: string | null
+          provider_type: string | null
+          status: string | null
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          error?: string | null
+          hub_url: string
+          id?: string
+          is_active?: boolean
+          last_crawled_at?: string | null
+          provider_name?: string | null
+          provider_type?: string | null
+          status?: string | null
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          error?: string | null
+          hub_url?: string
+          id?: string
+          is_active?: boolean
+          last_crawled_at?: string | null
+          provider_name?: string | null
+          provider_type?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
+      url_queue: {
+        Row: {
+          attempts: number
+          created_at: string
+          discovered_from: string | null
+          id: string
+          last_error: string | null
+          processed_at: string | null
+          provider_name: string | null
+          provider_type: string | null
+          status: string
+          url: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          discovered_from?: string | null
+          id?: string
+          last_error?: string | null
+          processed_at?: string | null
+          provider_name?: string | null
+          provider_type?: string | null
+          status?: string
+          url: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          discovered_from?: string | null
+          id?: string
+          last_error?: string | null
+          processed_at?: string | null
+          provider_name?: string | null
+          provider_type?: string | null
+          status?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "url_queue_discovered_from_fkey"
+            columns: ["discovered_from"]
+            isOneToOne: false
+            referencedRelation: "source_hubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
