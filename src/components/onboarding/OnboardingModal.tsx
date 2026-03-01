@@ -9,9 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, ArrowRight, ArrowLeft, CheckCircle2, User, GraduationCap, Target } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useCountries } from "@/hooks/useCountries";
 
 const DEGREE_TYPES = ["High School Diploma", "Associate's", "Bachelor's", "Master's", "PhD", "Postdoc"];
-const TARGET_COUNTRIES = ["USA", "UK", "Canada", "Australia", "Germany", "France", "Netherlands", "Sweden", "Japan", "South Korea", "Singapore"];
 const TARGET_COURSES = ["AI / Machine Learning", "Computer Science", "Data Science", "Fine Arts", "Public Policy", "Business / MBA", "Engineering", "Medicine", "Law", "Environmental Science", "Psychology", "Economics"];
 const TARGET_QUALIFICATIONS = ["Bachelors", "Post Graduate Certification", "Masters", "PhD", "Post PhD Fellowship"];
 
@@ -39,6 +39,7 @@ const STEPS = [
 const OnboardingModal = ({ open, userId, onComplete }: Props) => {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const { countries } = useCountries();
 
   // Step A — Basic Info
   const [fullName, setFullName] = useState("");
@@ -155,12 +156,16 @@ const OnboardingModal = ({ open, userId, onComplete }: Props) => {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-sm">Country of Origin *</Label>
-                  <Input
-                    value={countryOrigin}
-                    onChange={(e) => setCountryOrigin(e.target.value)}
-                    placeholder="e.g. Nigeria"
-                    className="rounded-lg h-11"
-                  />
+                  <Select value={countryOrigin} onValueChange={setCountryOrigin}>
+                    <SelectTrigger className="rounded-lg h-11">
+                      <SelectValue placeholder="Select your country" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {countries.map((c) => (
+                        <SelectItem key={c.code} value={c.name}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -264,16 +269,16 @@ const OnboardingModal = ({ open, userId, onComplete }: Props) => {
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Target Countries</Label>
                   <div className="flex flex-wrap gap-2">
-                    {TARGET_COUNTRIES.map((c) => (
+                    {countries.map((c) => (
                       <Badge
-                        key={c}
-                        variant={targetCountries.includes(c) ? "default" : "outline"}
+                        key={c.code}
+                        variant={targetCountries.includes(c.name) ? "default" : "outline"}
                         className={`cursor-pointer rounded-full px-3 py-1.5 text-xs transition-all ${
-                          targetCountries.includes(c) ? "gradient-gold text-accent-foreground border-0" : "hover:bg-secondary"
+                          targetCountries.includes(c.name) ? "gradient-gold text-accent-foreground border-0" : "hover:bg-secondary"
                         }`}
-                        onClick={() => toggleTag(c, targetCountries, setTargetCountries)}
+                        onClick={() => toggleTag(c.name, targetCountries, setTargetCountries)}
                       >
-                        {c}
+                        {c.name}
                       </Badge>
                     ))}
                   </div>

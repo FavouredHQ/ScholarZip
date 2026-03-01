@@ -12,13 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { X, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
+import { useCountries } from "@/hooks/useCountries";
 
-const COUNTRIES = ["USA", "UK", "Canada", "Australia", "Germany", "France", "Netherlands", "Sweden", "Japan", "South Korea", "Singapore", "Other"];
 const EDU_LEVELS = ["High School", "Undergraduate", "Graduate", "PhD", "Postdoc"];
 
 const Profile = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { countries } = useCountries();
   const [fullName, setFullName] = useState("");
   const [bio, setBio] = useState("");
   const [educationLevel, setEducationLevel] = useState("");
@@ -111,8 +112,8 @@ const Profile = () => {
                 <Label>Country of Origin</Label>
                 <Select value={countryOrigin} onValueChange={setCountryOrigin}>
                   <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
-                  <SelectContent>
-                    {COUNTRIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  <SelectContent className="max-h-60">
+                    {countries.map(c => <SelectItem key={c.code} value={c.name}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -132,9 +133,9 @@ const Profile = () => {
               <div className="flex gap-2">
                 <Select value={newCountry} onValueChange={setNewCountry}>
                   <SelectTrigger className="flex-1"><SelectValue placeholder="Add country" /></SelectTrigger>
-                  <SelectContent>
-                    {COUNTRIES.filter(c => !targetCountries.includes(c)).map(c => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                  <SelectContent className="max-h-60">
+                    {countries.filter(c => !targetCountries.includes(c.name)).map(c => (
+                      <SelectItem key={c.code} value={c.name}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

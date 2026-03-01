@@ -16,11 +16,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Pencil, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
+import { useCountries } from "@/hooks/useCountries";
 
 const PAGE_SIZE = 20;
 
 const AdminSourceHubs = () => {
   const queryClient = useQueryClient();
+  const { countries } = useCountries();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
@@ -197,10 +199,17 @@ const AdminSourceHubs = () => {
                     <Label className="text-xs">Provider Name</Label>
                     <Input className="h-8 text-xs" value={bulkName} onChange={(e) => setBulkName(e.target.value)} />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Country</Label>
-                    <Input className="h-8 text-xs" value={bulkCountry} onChange={(e) => setBulkCountry(e.target.value)} />
-                  </div>
+                   <div className="space-y-1">
+                     <Label className="text-xs">Country</Label>
+                     <Select value={bulkCountry} onValueChange={setBulkCountry}>
+                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
+                       <SelectContent className="max-h-60">
+                         {countries.map((c) => (
+                           <SelectItem key={c.code} value={c.name}>{c.name}</SelectItem>
+                         ))}
+                       </SelectContent>
+                     </Select>
+                   </div>
                 </div>
               </div>
               <DialogFooter>
@@ -364,7 +373,14 @@ const AdminSourceHubs = () => {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Country</Label>
-                <Input className="h-8 text-xs" value={editForm.country} onChange={(e) => setEditForm({ ...editForm, country: e.target.value })} />
+                <Select value={editForm.country} onValueChange={(v) => setEditForm({ ...editForm, country: v })}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {countries.map((c) => (
+                      <SelectItem key={c.code} value={c.name}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex items-center gap-2 pt-4">
                 <Switch checked={editForm.is_active} onCheckedChange={(v) => setEditForm({ ...editForm, is_active: v })} />
