@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Pencil, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, ExternalLink, ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 import { useCountries } from "@/hooks/useCountries";
@@ -110,6 +110,30 @@ const AdminSourceHubs = () => {
   const [bulkCountry, setBulkCountry] = useState("");
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
+  // Rerun state
+  const [rerunningId, setRerunningId] = useState<string | null>(null);
+  const [rerunResult, setRerunResult] = useState<{ hubId: string; data: Record<string, unknown> } | null>(null);
+
+  const RERUN_STATUSES = ["failed", "depth_exceeded", "queued_or_limited"];
+
+  const rerunHub = async (hubId: string) => {
+    setRerunningId(hubId);
+    setRerunResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("rerun-single-hub", { body: { hub_id: hubId } });
+      if (error) throw error;
+      const queued = data?.urls_queued ?? 0;
+      toast.success(`Hub re-run complete: ${queued} URLs queued`);
+      setRerunResult({ hubId, data: data ?? {} });
+      queryClient.invalidateQueries({ queryKey: ["admin_source_hubs"] });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      toast.error(`Re-run failed: ${msg}`);
+    } finally {
+      setRerunningId(null);
+    }
+  };
+
   const { data: hubsData, isLoading } = useQuery({
     queryKey: ["admin_source_hubs", page, search, filterType, filterActive, filterStatus],
     queryFn: async () => {
@@ -123,8 +147,7 @@ const AdminSourceHubs = () => {
       if (filterType !== "all") query = query.eq("provider_type", filterType);
       if (filterActive === "active") query = query.eq("is_active", true);
       if (filterActive === "inactive") query = query.eq("is_active", false);
-      if (filterStatus === "ok") query = query.eq("status", "ok");
-      if (filterStatus === "failed") query = query.eq("status", "failed");
+      if (filterStatus !== "all") query = query.eq("status", filterStatus);
 
       const { data, count, error } = await query;
       if (error) throw error;
@@ -310,11 +333,13 @@ const AdminSourceHubs = () => {
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setPage(0); }}>
-            <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 text-xs w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="ok">OK</SelectItem>
               <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="depth_exceeded">Depth Exceeded</SelectItem>
+              <SelectItem value="queued_or_limited">Rate Limited</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -376,10 +401,22 @@ const AdminSourceHubs = () => {
                       )}
                     </TableCell>
                     <TableCell className="text-xs text-destructive max-w-[120px] truncate" title={hub.error ?? ""}>{hub.error ?? "—"}</TableCell>
-                    <TableCell>
+                    <TableCell className="flex items-center gap-1">
                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEditOpen(hub)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
+                      {RERUN_STATUSES.includes(hub.status ?? "") && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-primary"
+                          disabled={rerunningId === hub.id}
+                          onClick={() => rerunHub(hub.id)}
+                          title="Re-run this hub"
+                        >
+                          <RotateCw className={`h-3.5 w-3.5 ${rerunningId === hub.id ? "animate-spin" : ""}`} />
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -455,9 +492,29 @@ const AdminSourceHubs = () => {
               <Label className="text-xs">Active</Label>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {editHub && RERUN_STATUSES.includes(editHub.status ?? "") && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={rerunningId === editHub.id}
+                onClick={() => rerunHub(editHub.id)}
+              >
+                <RotateCw className={`h-3.5 w-3.5 ${rerunningId === editHub.id ? "animate-spin" : ""}`} />
+                {rerunningId === editHub.id ? "Running…" : "Re-run Hub"}
+              </Button>
+            )}
             <Button onClick={handleEditSave} className="gradient-gold text-accent-foreground font-semibold">Save</Button>
           </DialogFooter>
+          {rerunResult && rerunResult.hubId === editHub?.id && (
+            <details className="text-xs mt-2">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Last re-run result</summary>
+              <pre className="bg-muted rounded-lg p-3 overflow-auto max-h-32 mt-1 text-foreground">
+                {JSON.stringify(rerunResult.data, null, 2)}
+              </pre>
+            </details>
+          )}
         </DialogContent>
       </Dialog>
     </AdminLayout>
